@@ -30,7 +30,7 @@ jobs:
           cp -R icons www/
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-          npx cap init "TakenCafe" "com.takencafe.app" --web-dir www
+          npx cap init "RAVI POS" "com.takencafe.ravi.fresh" --web-dir www
           npx cap add android
           echo 'configurations.all { resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22" } }' >> android/app/build.gradle
 
@@ -43,7 +43,7 @@ jobs:
           scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.S | re.I)
           if not scripts:
               raise SystemExit('No inline script found in index.html')
-          Path('/tmp/takencafe-inline.js').write_text(scripts[-1], encoding='utf-8')
+          Path('/tmp/takencafe-inline.js').write_text(max(scripts, key=len), encoding='utf-8')
           PY
           node --check /tmp/takencafe-inline.js
           node --check www/ravi-fixes.js
@@ -54,10 +54,14 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          for attempt in 1 2 3; do
+            if ./gradlew assembleDebug; then exit 0; fi
+            sleep $((attempt * 30))
+          done
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: TakenCafe-APK
+          name: RAVI-POS-Fresh-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
