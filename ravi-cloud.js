@@ -275,10 +275,23 @@ function doPost(e) {
     return result;
   }
 
+  function ownerConnected() {
+    return isOwner() && ownerConnection?.endpoint === settings.gdriveUrl;
+  }
+
   function refreshOwnerPanel() {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !allowed;
-    byId("cloudOwnerSetup").hidden = isOnlineOwner();
+    const setup = byId("cloudOwnerSetup");
+    setup.hidden = !allowed || isOnlineOwner();
+    if (allowed && !ownerConnected()) {
+      setup.open = true;
+      showOwnerSyncStatus("setup", "Enter the owner key once to connect this device.");
+    } else if (!allowed) {
+      setup.open = false;
+      showOwnerSyncStatus("setup", "Sign in as Owner to sync.");
+      byId("cloudSetupResult").textContent = "";
+    }
     byId("onlineOwnerActivation").hidden = !allowed || !ownerConnection?.canBootstrap;
     if (!allowed || isOnlineOwner()) {
       byId("onlineOwnerId").value = "";
@@ -286,7 +299,6 @@ function doPost(e) {
       byId("onlineOwnerPasswordRow").hidden = true;
     }
     byId("gdriveUrlInput").readOnly = isOnlineOwner();
-    byId("connectCloudShop").hidden = isOnlineOwner();
     if (!allowed) {
       ownerConnection = undefined;
       byId("cloudOwnerKey").value = "";
@@ -398,6 +410,7 @@ function doPost(e) {
     const keyField = byId("cloudOwnerKey");
     const passwordField = byId("cloudStaffPassword");
     const result = byId("cloudStaffResult");
+    const setupResult = byId("cloudSetupResult");
     const shopField = byId("gdriveUrlInput");
     let pendingStaff;
     const mode = byId("loginMode");
@@ -432,15 +445,15 @@ function doPost(e) {
       refreshOwnerPanel();
     };
 
-    const run = (button, action) => {
+    const run = (button, action, feedback = result) => {
       button.addEventListener("click", async () => {
         if (!isOwner()) return;
         button.disabled = true;
-        result.textContent = "";
+        feedback.textContent = "";
         try {
           await action();
         } catch (error) {
-          if (isOwner()) result.textContent = error.message;
+          if (isOwner()) feedback.textContent = error.message;
         } finally {
           button.disabled = false;
         }
@@ -456,6 +469,7 @@ function doPost(e) {
       if (!isOwner() || endpoint !== shopLink()) return;
       const list = byId("cloudStaffList");
       list.replaceChildren();
+      byId("cloudOwnershipNote").hidden = !canManageOwners || !ids.length;
       for (const id of ids.filter(id => staffId.test(id))) {
         const role = roles?.[id] || "staff";
         const roleLabel = { primary: "Primary owner", "co-owner": "Co-owner", staff: "Staff" }[role];
@@ -498,8 +512,8 @@ function doPost(e) {
         const bytes = crypto.getRandomValues(new Uint8Array(32));
         byId(id).value = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
       }
-      result.textContent = "Copy these into Apps Script → Project Settings → Script properties.";
-    });
+      setupResult.textContent = "Copy these into Apps Script → Project Settings → Script properties.";
+    }, setupResult);
     run(byId("saveCloudOwnerKey"), async () => {
       const key = keyField.value.trim();
       const endpoint = shopLink();
@@ -507,23 +521,23 @@ function doPost(e) {
       const ownerAccess = await request(endpoint, "owner.check", { ownerKey: key });
       if (!isOwner() || endpoint !== shopLink() || keyField.value.trim() !== key) return;
       ownerConnection = { endpoint, key, canBootstrap: ownerAccess.canBootstrap === true };
-      refreshOwnerPanel();
       byId("onlineOwnerId").value = getLoggedAccount().username.trim().toLowerCase();
       keyField.value = "";
       shopField.value = endpoint;
       settings.gdriveUrl = endpoint;
       safeStorageSet("tc_staff_shop", endpoint);
       safeStorageSet("tc_settings", settings);
-      result.textContent = "Owner key saved for this session.";
+      refreshOwnerPanel();
+      setupResult.textContent = "Owner key saved for this session.";
       triggerBackgroundSync();
-    });
+    }, setupResult);
 
     run(byId("generateOnlineOwnerPassword"), () => {
       if (!ownerConnection?.canBootstrap) return;
       const field = byId("onlineOwnerPassword");
       field.value ||= createPassword();
       byId("onlineOwnerPasswordRow").hidden = false;
-    });
+    }, setupResult);
 
     run(byId("activateOnlineOwner"), async () => {
       const connection = ownerConnection;
@@ -540,11 +554,11 @@ function doPost(e) {
         if (!isOwner() || sessionStorage.getItem("tc_logged_uid") !== previousUid) return;
         startOnlineOwner(connection.endpoint, id, password);
         openSession({ uid: "cloud-owner:" + id, username: id, role: "Owner" });
-        result.textContent = "Online Owner activated. Sync starts automatically.";
+        setupResult.textContent = "Online Owner activated. Sync starts automatically.";
       } finally {
         idField.readOnly = false;
       }
-    });
+    }, setupResult);
 
     run(byId("createCloudStaff"), async () => {
       const id = byId("cloudStaffId").value.trim().toLowerCase();
@@ -580,5 +594,5 @@ function doPost(e) {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, staffShopLink, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff };
+  return { init, owner, staff, staffShopLink, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected };
 })();

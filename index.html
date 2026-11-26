@@ -769,69 +769,83 @@
         </div>
       </div>
 
-      <div class="card" style="border:1px solid var(--blue);">
-        <span class="card-title" style="color:var(--blue);">☁️ Google Drive / Google Sheet Sync & Printer</span>
-        <p style="font-size:12px;color:var(--muted);margin:5px 0 8px;">
-          Connect your <b>Google Apps Script Web App URL</b> to auto-sync Bills, Cash/UPI Totals, Menu, Staff Attendance & Expenses to Google Drive & Live Google Sheet.
-        </p>
-
-        <input type="text" id="gdriveUrlInput" placeholder="Paste Google Drive Web App URL (https://script.google.com/macros/s/.../exec)" style="margin-bottom:8px;" />
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <button class="btn btn-blue" id="connectCloudShop" onclick="saveGDriveConfig()">🔗 Connect & Sync</button>
-          <button class="btn btn-dark" onclick="syncNowBothWays(true)">🔄 Sync Now</button>
-        </div>
-        <div id="cloudStaffPanel" hidden>
-          <div id="cloudOwnerSetup">
-          <p>Owner setup requires the updated Apps Script and its private owner key.</p>
-          <details>
-            <summary>Generate keys for Apps Script setup</summary>
-            <button type="button" class="btn btn-outline" id="generateCloudKeys">Generate setup keys</button>
-            <label for="generatedOwnerKey">RAVI_OWNER_KEY</label>
-            <input readonly id="generatedOwnerKey" />
-            <label for="generatedStaffPepper">RAVI_STAFF_PEPPER</label>
-            <input readonly id="generatedStaffPepper" />
-          </details>
-          <label for="cloudOwnerKey">Owner key</label>
-          <input type="password" id="cloudOwnerKey" autocomplete="off" />
-          <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
-          <section id="onlineOwnerActivation" hidden>
-            <p>Set up your online Owner login once to sync automatically after each sign-in.</p>
-            <label for="onlineOwnerId">Online Owner ID</label>
-            <input id="onlineOwnerId" type="text" autocomplete="off" />
-            <button type="button" class="btn btn-outline" id="generateOnlineOwnerPassword">Generate Owner password</button>
-            <div id="onlineOwnerPasswordRow" hidden>
-              <label for="onlineOwnerPassword">Online Owner password</label>
-              <input id="onlineOwnerPassword" readonly autocomplete="off" />
-              <p>Save this password privately first. This login replaces the setup key for online access.</p>
-              <button type="button" class="btn btn-primary" id="activateOnlineOwner">Activate Owner &amp; Sync</button>
-            </div>
-          </section>
+      <div class="card cloud-settings-card">
+        <div class="cloud-settings-heading">
+          <div>
+            <h2>Google Drive &amp; Sheets sync</h2>
+            <p id="gdriveSyncLog" role="status">Sign in as Owner to sync.</p>
           </div>
-          <label for="cloudStaffId">Online staff ID</label>
+          <button type="button" class="btn btn-primary" id="syncCloudNow" onclick="syncNowBothWays(true)">Sync now</button>
+        </div>
+        <p id="cloudSetupResult" class="cloud-feedback" role="status"></p>
+
+        <details id="cloudOwnerSetup" class="cloud-disclosure" hidden>
+          <summary>One-time Owner setup</summary>
+          <div class="cloud-settings-fields">
+            <label for="gdriveUrlInput">Shop web app URL</label>
+            <input type="url" id="gdriveUrlInput" autocomplete="off" />
+            <label for="cloudOwnerKey">Owner key</label>
+            <input type="password" id="cloudOwnerKey" autocomplete="off" />
+            <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
+
+            <section id="onlineOwnerActivation" class="cloud-settings-fields cloud-activation" hidden>
+              <h3>Enable automatic Owner sync</h3>
+              <label for="onlineOwnerId">Online Owner ID</label>
+              <input id="onlineOwnerId" type="text" autocomplete="off" />
+              <button type="button" class="btn btn-outline" id="generateOnlineOwnerPassword">Generate Owner password</button>
+              <div id="onlineOwnerPasswordRow" class="cloud-settings-fields" hidden>
+                <label for="onlineOwnerPassword">Online Owner password</label>
+                <input id="onlineOwnerPassword" readonly autocomplete="off" />
+                <p>Save this password privately first. This login replaces the setup key for online access.</p>
+                <button type="button" class="btn btn-primary" id="activateOnlineOwner">Activate Owner &amp; Sync</button>
+              </div>
+            </section>
+
+            <details class="cloud-disclosure">
+              <summary>Google Apps Script installation</summary>
+              <div class="cloud-settings-fields">
+                <button type="button" class="btn btn-outline" onclick="copyAppsScript()">Copy Script</button>
+                <div class="code-box" id="appsScriptDisplay"></div>
+                <button type="button" class="btn btn-outline" id="generateCloudKeys">Generate setup keys</button>
+                <label for="generatedOwnerKey">RAVI_OWNER_KEY</label>
+                <input readonly id="generatedOwnerKey" />
+                <label for="generatedStaffPepper">RAVI_STAFF_PEPPER</label>
+                <input readonly id="generatedStaffPepper" />
+              </div>
+            </details>
+          </div>
+        </details>
+      </div>
+
+      <div class="card cloud-settings-card" id="cloudStaffPanel" hidden>
+        <h2>Staff &amp; Owner access</h2>
+        <div class="cloud-settings-fields">
+          <label for="cloudStaffId">Online Staff ID</label>
           <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
-          <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
-          <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
-          <p id="cloudStaffResult" role="status"></p>
+          <div class="cloud-settings-actions">
+            <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
+            <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
+          </div>
+          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
           <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
-          <p>Co-owners can manage the shop and regular staff. Transferring ownership makes the selected account primary owner and ends your primary owner access.</p>
+          <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
           <ul id="cloudStaffList"></ul>
         </div>
-        <div id="gdriveSyncLog" style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:10px;">Status: Ready.</div>
+      </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <select id="paperSizeSelect" onchange="savePrinterPrefs()">
-            <option value="80mm">80mm Thermal Paper</option>
-            <option value="58mm">58mm Thermal Paper</option>
-          </select>
-          <button class="btn btn-outline" onclick="connectBluetoothPrinter()">📶 Pair BT Printer</button>
+      <div class="card cloud-settings-card">
+        <h2>Receipt printer</h2>
+        <div class="cloud-settings-fields">
+          <label for="paperSizeSelect">Paper size</label>
+          <div class="cloud-settings-actions">
+            <select id="paperSizeSelect" onchange="savePrinterPrefs()">
+              <option value="80mm">80mm Thermal Paper</option>
+              <option value="58mm">58mm Thermal Paper</option>
+            </select>
+            <button type="button" class="btn btn-outline" onclick="connectBluetoothPrinter()">Pair Bluetooth printer</button>
+          </div>
+          <p id="btPrinterStatus" role="status">Printer status: Ready</p>
         </div>
-        <div id="btPrinterStatus" style="font-size:11px;color:var(--muted);margin-bottom:8px;">Printer Status: Ready</div>
-
-        <details style="margin-top:10px;background:var(--bg);padding:8px;border-radius:8px;border:1px solid var(--border);">
-          <summary style="font-weight:700;font-size:12px;cursor:pointer;">📖 Google Apps Script Code (Auto-Updates Google Sheet)</summary>
-          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;margin-top:8px;" onclick="copyAppsScript()">📋 Copy Script</button>
-          <div class="code-box" id="appsScriptDisplay"></div>
-        </details>
       </div>
 
       <div class="card">
@@ -1609,7 +1623,7 @@
       document.getElementById("setAddress").value = settings.address || "";
       document.getElementById("setUpi").value = settings.upi || "";
       document.getElementById("setGstin").value = settings.gstin || "";
-      document.getElementById("gdriveUrlInput").value = settings.gdriveUrl || "";
+      document.getElementById("gdriveUrlInput").value = settings.gdriveUrl || DEFAULT_RAVI_ENDPOINT;
       document.getElementById("paperSizeSelect").value = settings.paperSize || "80mm";
       applyThemeUI();
       applyRolePermissionsUI();
@@ -2270,21 +2284,25 @@
       saveOrShareFile(xlsxBytes, `RAVI_Items_${parseAnyDateToISO(getTodayDDMMYYYY())}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
-    async function saveGDriveConfig() {
-      if (RaviCloud.isOnlineOwner()) return;
-      if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
-      const url = document.getElementById("gdriveUrlInput").value.trim();
-      settings.gdriveUrl = url; safeStorageSet("tc_settings", settings);
-      if (!url) { document.getElementById("syncStatusBadge").textContent = "☁️ Local"; return showToast("Google Drive URL cleared"); }
-      await syncNowBothWays(true);
+    function showOwnerSyncStatus(state, message) {
+      const status = document.getElementById("gdriveSyncLog");
+      status.dataset.state = state;
+      status.textContent = message;
+      document.getElementById("syncCloudNow").disabled = state === "syncing";
     }
 
     async function syncNowBothWays(notify) {
       if (RaviCloud.staffActive()) return RaviCloud.syncStaff();
       if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
-      if (!settings.gdriveUrl) { if (notify) showToast("Paste Google Drive Web App URL in Settings tab"); return; }
+      if (!RaviCloud.ownerConnected()) {
+        showOwnerSyncStatus("setup", "Open One-time Owner setup and save the owner key.");
+        if (notify) document.getElementById("cloudOwnerSetup").open = true;
+        return;
+      }
       if (isSyncing) { syncQueued = true; return; }
-      isSyncing = true; document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
+      isSyncing = true;
+      showOwnerSyncStatus("syncing", "Syncing with Google Drive and Sheets…");
+      document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
         if (RaviCloud.isOnlineOwner()) await RaviCloud.syncStaff();
         const backup = await RaviCloud.owner(settings.gdriveUrl, "backup.read");
@@ -2301,11 +2319,13 @@
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
         if (saved.data) await mergeTwoWayData(saved.data);
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
-        document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
+        showOwnerSyncStatus("synced", `Synced at ${getNowTimeIST()}. Google Sheet updated.`);
         if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
-        document.getElementById("syncStatusBadge").textContent = "☁️ Offline";
-        if (notify || err.revoked) showToast(err.revoked ? err.message : "Offline / slow network — saved locally!");
+        document.getElementById("syncStatusBadge").textContent = "☁️ Pending";
+        const message = err.revoked ? err.message : "Sync pending. Your changes are saved on this device.";
+        showOwnerSyncStatus("pending", message);
+        if (notify || err.revoked) showToast(message);
       } finally {
         isSyncing = false;
         if (syncQueued) { syncQueued = false; setTimeout(() => syncNowBothWays(false), 350); }
