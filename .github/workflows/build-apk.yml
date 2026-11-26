@@ -34,6 +34,35 @@ jobs:
           npx cap add android
           echo 'configurations.all { resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22" } }' >> android/app/build.gradle
 
+      - name: Apply RAVI Android launcher icons
+        run: |
+          python3 -m venv .icon-tools
+          .icon-tools/bin/python -m pip install 'Pillow==11.3.0'
+          .icon-tools/bin/python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          resources = Path('android/app/src/main/res')
+          regular = Image.open('icons/icon-512.png').convert('RGB')
+          adaptive = Image.open('icons/icon-maskable-512.png').convert('RGB')
+          background = adaptive.getpixel((0, 0))
+          circle = Image.new('L', regular.size)
+          ImageDraw.Draw(circle).ellipse((0, 0, 511, 511), fill=255)
+          rounded = regular.copy()
+          rounded.putalpha(circle)
+
+          for density, size in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
+              folder = resources / f'mipmap-{density}'
+              foreground = size * 9 // 4
+              regular.resize((size, size), Image.Resampling.LANCZOS).save(folder / 'ic_launcher.png')
+              rounded.resize((size, size), Image.Resampling.LANCZOS).save(folder / 'ic_launcher_round.png')
+              adaptive.resize((foreground, foreground), Image.Resampling.LANCZOS).save(folder / 'ic_launcher_foreground.png')
+
+          color = '#{:02X}{:02X}{:02X}'.format(*background)
+          file = resources / 'values/ic_launcher_background.xml'
+          file.write_text(file.read_text().replace('#FFFFFF', color))
+          PY
+
       - name: Validate inline JavaScript syntax
         run: |
           python3 - <<'PY'
@@ -60,8 +89,12 @@ jobs:
           done
           exit 1
 
+      - name: Name APK for download
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk RAVI-POS.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
           name: RAVI-POS-Fresh-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: RAVI-POS.apk
+          if-no-files-found: error
