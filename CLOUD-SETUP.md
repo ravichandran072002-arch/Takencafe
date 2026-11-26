@@ -4,11 +4,11 @@
 
 Use the Google account that owns the Apps Script project behind your shop's current `/exec` URL.
 
-1. Sign in as Owner in the updated RAVI POS app. Open Settings and use **Copy Script** under **Google Apps Script Code**.
+1. Sign in as Owner in the updated RAVI POS app. Open **Settings → One-time Owner setup → Google Apps Script installation → Copy Script**.
 2. Open the original Apps Script project and save a copy of its source. Replace the old web app code with the copied script. The RAVI script uses the existing `TakenCafe_POS_Drive_Sync` folder and `RAVI_POS_Live_Sheet` names. If your current script uses different names or custom spreadsheet logic, preserve those before deploying.
-3. In the app, open **Generate keys for Apps Script setup**. Generate two keys. Under Apps Script **Project Settings → Script properties**, set `RAVI_OWNER_KEY` and `RAVI_STAFF_PEPPER` to their respective values. Keep both private. Only the owner key is entered back into RAVI POS.
+3. Under **Google Apps Script installation**, choose **Generate setup keys**. Under Apps Script **Project Settings → Script properties**, set `RAVI_OWNER_KEY` and `RAVI_STAFF_PEPPER` to their respective values. Keep both private. Only the owner key is entered back into RAVI POS.
 4. In Apps Script use **Deploy → Manage deployments → Edit → New version** on the existing web app. Set **Execute as** to the script owner. Set access to **Anyone** for phones that don't sign in to Google. Deploy and grant the requested Drive/Sheets permissions. Updating the existing deployment preserves its `/exec` URL.
-5. Enter the URL and owner key in RAVI POS Settings. Choose **Save owner key** and confirm the app can sync. The owner key stays in memory until logout or app restart. Keep your own private copy.
+5. In **One-time Owner setup**, check the preset shop URL and enter the owner key. Choose **Save owner key** and confirm the app can sync. The owner key stays in memory until logout or app restart. Keep your own private copy.
 6. If older web app deployments still expose the backup, archive them after confirming the new version works. Earlier backups may still contain legacy credential hashes. Keep those files private and review Drive sharing and retention.
 
 ## Create and use an online Staff ID
@@ -36,7 +36,7 @@ Install matching builds on both devices and deploy the updated Apps Script versi
 
 Deploy this version of `Code.gs` to the existing web app and update the app on both devices. Keep the existing script properties and /exec URL.
 
-- The current primary owner signs in and opens **Settings → Refresh staff list**. If this shop still uses the original local owner, save its owner key for that session first.
+- The current primary owner signs in and opens **Settings → Staff & Owner access → Refresh staff list**. If this shop still uses the original local owner, save its owner key for that session first.
 - **Make Co-owner** lets the selected staff account sign in with its current Online Staff ID and password and manage shop data and regular staff. Only the primary owner can assign or remove Co-owner access or transfer ownership.
 - **Transfer ownership to [staff ID]** changes the primary owner immediately. That person signs in under **Staff / online** with their existing ID and password and gets the Owner screen. The previous primary owner's online Owner access ends. If they had an online account, it becomes Staff. The old setup key can no longer authorize online owner requests after transfer.
 - Google Drive and Apps Script stay under the current Google account. The app transfer shares authorized shop access, and existing offline records already on a former owner's device remain on that device.
