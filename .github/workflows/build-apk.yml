@@ -2,7 +2,7 @@ name: Build TakenCafe APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fix/script-init-and-authenticated-sync ]
   workflow_dispatch:
 
 jobs:
