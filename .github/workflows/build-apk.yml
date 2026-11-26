@@ -2,7 +2,7 @@ name: Build TakenCafe APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, qa/js-syntax-validation ]
   workflow_dispatch:
 
 jobs:
@@ -32,6 +32,19 @@ jobs:
           npx cap init "TakenCafe" "com.takencafe.app" --web-dir www
           npx cap add android
           echo 'configurations.all { resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22" } }' >> android/app/build.gradle
+
+      - name: Validate inline JavaScript syntax
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          html = Path('www/index.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.S | re.I)
+          if not scripts:
+              raise SystemExit('No inline script found in index.html')
+          Path('/tmp/takencafe-inline.js').write_text(scripts[-1], encoding='utf-8')
+          PY
+          node --check /tmp/takencafe-inline.js
 
       - name: Build Debug APK
         run: |
