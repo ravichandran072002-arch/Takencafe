@@ -13,5 +13,8 @@ node --check desktop/ravi-cloud.js
 node --check desktop/sw.js
 cd desktop
 npm install
-npx electron-builder --mac --arm64 --publish never
+npx electron-builder --mac --publish never
+app="$(find dist -maxdepth 2 -type d -name 'TakenCafe.app' -print -quit)"
+test -n "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
 echo "Built DMG: $(pwd)/dist"

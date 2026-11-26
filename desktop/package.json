@@ -24,6 +24,8 @@
     ],
     "mac": {
       "target": "dmg",
+      "identity": "-",
+      "hardenedRuntime": false,
       "icon": "icon.png",
       "category": "public.app-category.business"
     },
