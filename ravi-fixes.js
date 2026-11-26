@@ -62,7 +62,13 @@
     return false;
   }
 
-  async function migrateUsers() {
+  let migrationQueue = Promise.resolve();
+  function migrateUsers() {
+    const task = migrationQueue.then(migrateUsersImpl);
+    migrationQueue = task.catch(() => {});
+    return task;
+  }
+  async function migrateUsersImpl() {
     let changed = false;
     for (const u of authUsers) {
       if (u.password !== undefined) {
@@ -96,7 +102,7 @@
         if (res.ok) { const remote = await res.json(); if (remote && !remote.empty) mergeTwoWayData(remote); }
       } catch (e) {}
     }
-    await migrateUsers();
+    try { await migrateUsers(); } catch (e) { return showToast("Secure login unavailable. Update Android System WebView."); }
     let u = null;
     for (const x of authUsers) {
       if (String(x.username).trim().toLowerCase() === id && x.passHash && await verifyPw(pw, x.passHash, x.uid)) { u = x; break; }
@@ -105,6 +111,7 @@
       $r("loginSyncHint").textContent = "Works Offline & Syncs with Google Drive / Sheet";
       return showToast("❌ Invalid Login ID or Password!");
     }
+    if (u.mustChange && !(await forcePassChange(u))) return;
     const priv = u.role === "Owner" || u.role === "Admin" || u.role === "Manager";
     sessionStorage.setItem("tc_session_logged", "1");
     sessionStorage.setItem("tc_logged_uid", u.uid);
@@ -114,7 +121,6 @@
     $r("appLoginScreen").classList.add("hidden");
     $r("loginPassInput").value = "";
     applyRolePermissionsUI();
-    if (u.mustChange && !(await forcePassChange(u))) { logoutApp(); return; }
     if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
     else showToast(`✅ Welcome ${u.username} (${u.role})`);
     if (settings.gdriveUrl) triggerBackgroundSync();
@@ -297,7 +303,7 @@
     $r("raviPinBtn").onclick = changePin; $r("raviTokBtn").onclick = setSyncSecret;
   }
   sanitizeAll(); saveAll();
-  migrateUsers().then(() => { renderLoginUsersTable(); renderCategories(); renderMenu(); });
+  migrateUsers().then(() => { renderLoginUsersTable(); renderCategories(); renderMenu(); }).catch(e => console.error('Login initialization failed', e));
   injectButtons();
   const origApply = window.applySettingsToInputs;
   window.applySettingsToInputs = function () { origApply(); injectButtons(); };
