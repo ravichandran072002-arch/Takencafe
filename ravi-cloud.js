@@ -105,6 +105,16 @@ function raviStaffSync(req, props, pepper) {
   }
 }
 
+function raviRole(props, id) {
+  if (props.getProperty("RAVI_PRIMARY_ID") === id) return "primary";
+  return props.getProperty("co-owner:" + id) ? "co-owner" : "staff";
+}
+
+function raviVerifyAccount(props, pepper, req) {
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return false;
+  return raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
+}
+
 function doPost(e) {
   const bad = { ok: false };
   const props = PropertiesService.getScriptProperties();
@@ -115,26 +125,32 @@ function doPost(e) {
     if (!req || req.protocol !== RAVI_PROTOCOL || !/^[a-f0-9]{64}$/.test(ownerKey || "")
         || !/^[a-f0-9]{64}$/.test(staffPepper || "") || ownerKey === staffPepper) return raviReply(bad);
 
-    if (req.action === "staff.login" || req.action === "staff.sync") {
-      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return raviReply(bad);
-      if (req.action === "staff.sync") return raviStaffSync(req, props, staffPepper);
-      const stored = props.getProperty("staff:" + req.id);
-      const digest = raviStaffDigest(staffPepper, req.id, req.password);
-      if (!stored || !raviEqual(digest, stored)) return raviReply(bad);
-      return raviReply({ ok: true, staffId: req.id });
+    if (req.action === "staff.login") {
+      return raviReply(raviVerifyAccount(props, staffPepper, req)
+        ? { ok: true, staffId: req.id, role: raviRole(props, req.id) } : bad);
     }
-
-    if (!raviEqual(req.ownerKey, ownerKey)) return raviReply(bad);
-    if (req.action === "owner.check") return raviReply({ ok: true });
-    if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
-    if (req.action === "staff.list") {
-      const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
-      return raviReply({ ok: true, ids });
+    if (req.action === "staff.sync") {
+      if (!raviVerifyAccount(props, staffPepper, req)) return raviReply({ ok: false, reason: "revoked" });
+      return raviStaffSync(req, props, staffPepper);
     }
 
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
+      const primaryId = props.getProperty("RAVI_PRIMARY_ID");
+      const accountLogin = typeof req.ownerKey !== "string" && typeof req.password === "string";
+      const role = accountLogin
+        ? (raviVerifyAccount(props, staffPepper, req) ? raviRole(props, req.id) : "staff")
+        : (!primaryId && raviEqual(req.ownerKey, ownerKey) ? "primary" : "staff");
+      if (role === "staff") return raviReply(accountLogin || (primaryId && raviEqual(req.ownerKey, ownerKey))
+        ? { ok: false, reason: "revoked" } : bad);
+      if (req.action === "owner.check") return raviReply({ ok: true, role });
+      if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
+      if (req.action === "staff.list") {
+        const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
+        const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary" });
+      }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
         delete data.authUsers;
@@ -145,17 +161,34 @@ function doPost(e) {
         return raviReply({ ok: true, data: merged });
       }
 
-      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "")) return raviReply(bad);
-      const key = "staff:" + req.id;
-      if (req.action === "staff.revoke") {
+      const target = accountLogin ? req.target : req.id;
+      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(target || "")) return raviReply(bad);
+      const key = "staff:" + target;
+      const targetRole = raviRole(props, target);
+      if (req.action === "staff.revoke" && targetRole === "staff") {
         props.deleteProperty(key);
         return raviReply({ ok: true });
       }
-      if (req.action === "staff.create" && /^[A-Za-z0-9_-]{24}$/.test(req.password || "")) {
-        const digest = raviStaffDigest(staffPepper, req.id, req.password);
+      const password = accountLogin ? req.newPassword : req.password;
+      if (req.action === "staff.create" && /^[A-Za-z0-9_-]{24}$/.test(password || "")) {
+        const digest = raviStaffDigest(staffPepper, target, password);
         const existing = props.getProperty(key);
         if (existing && !raviEqual(existing, digest)) return raviReply({ ok: false, reason: "exists" });
         props.setProperty(key, digest);
+        return raviReply({ ok: true });
+      }
+      if (role !== "primary" || !props.getProperty(key) || targetRole === "primary") return raviReply(bad);
+      if (req.action === "owner.promote") {
+        props.setProperty("co-owner:" + target, "1");
+        return raviReply({ ok: true });
+      }
+      if (req.action === "owner.demote") {
+        props.deleteProperty("co-owner:" + target);
+        return raviReply({ ok: true });
+      }
+      if (req.action === "owner.transfer") {
+        props.deleteProperty("co-owner:" + target);
+        props.setProperty("RAVI_PRIMARY_ID", target);
         return raviReply({ ok: true });
       }
       return raviReply(bad);
@@ -193,7 +226,7 @@ function doPost(e) {
     if (!response.ok || result?.ok !== true) {
       if (result?.reason === "exists") throw Error("That Staff ID already exists. Revoke it before replacing the password.");
       if (result?.reason === "revoked") {
-        const error = Error("Staff access ended. Sign in again.");
+        const error = Error("Online access changed. Sign in again.");
         error.revoked = true;
         throw error;
       }
@@ -211,7 +244,18 @@ function doPost(e) {
     if (!isOwner() || !ownerConnection || ownerConnection.endpoint !== endpoint) {
       throw Error("Save the owner key for this shop link first.");
     }
-    return request(endpoint, action, { ...fields, ownerKey: ownerConnection.key });
+    const connection = ownerConnection;
+    try {
+      return await request(endpoint, action, connection.id
+        ? { ...fields, target: fields.id, newPassword: fields.password, id: connection.id, password: connection.password }
+        : { ...fields, ownerKey: connection.key });
+    } catch (error) {
+      if (connection === ownerConnection && error.revoked) {
+        ownerConnection = undefined;
+        if (connection.id) logoutApp();
+      }
+      throw error;
+    }
   }
 
   async function staff(endpoint, id, password) {
@@ -224,6 +268,9 @@ function doPost(e) {
   function refreshOwnerPanel() {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !allowed;
+    byId("cloudOwnerSetup").hidden = isOnlineOwner();
+    byId("gdriveUrlInput").readOnly = isOnlineOwner();
+    byId("connectCloudShop").hidden = isOnlineOwner();
     if (!allowed) {
       ownerConnection = undefined;
       byId("cloudOwnerKey").value = "";
@@ -234,6 +281,23 @@ function doPost(e) {
       byId("cloudStaffList").replaceChildren();
       byId("cloudStaffResult").textContent = "";
     }
+  }
+
+  function isOnlineOwner() {
+    return Boolean(ownerConnection?.id);
+  }
+
+  function startOnlineOwner(endpoint, id, password) {
+    ownerConnection = { endpoint, id, password };
+    settings.gdriveUrl = endpoint;
+    byId("gdriveUrlInput").value = endpoint;
+    safeStorageSet("tc_staff_shop", endpoint);
+    safeStorageSet("tc_login_mode", "staff");
+    safeStorageSet("tc_settings", settings);
+    staffConnection = { endpoint, id, password };
+    clearCart();
+    clearTimeout(staffExpiry);
+    staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
   }
 
   function startStaffSession(endpoint, id, password) {
@@ -247,15 +311,15 @@ function doPost(e) {
   }
 
   function staffActive() {
-    return Boolean(staffConnection);
+    return Boolean(staffConnection) && !isOnlineOwner();
   }
 
   function ownsRecord(record) {
-    return !staffConnection || (record.cloud?.id === staffConnection.id && record.cloud.endpoint === staffConnection.endpoint);
+    return !staffActive() || (record.cloud?.id === staffConnection.id && record.cloud.endpoint === staffConnection.endpoint);
   }
 
   function tagRecord(record) {
-    if (staffConnection) {
+    if (staffActive()) {
       record.uid = "s:" + staffConnection.id + ":" + crypto.randomUUID();
       record.cloud = { endpoint: staffConnection.endpoint, id: staffConnection.id, uploadedAt: -1 };
     }
@@ -267,10 +331,11 @@ function doPost(e) {
     syncingStaff = true;
     const badge = byId("syncStatusBadge");
     try {
-      const batch = records => records.filter(record => record.cloud && ownsRecord(record)
+      const batch = records => records.filter(record => record.cloud?.id === connection.id && record.cloud.endpoint === connection.endpoint
         && record.cloud.uploadedAt !== (record.updatedAt || 0)).slice(0, 25);
       const billBatch = batch(bills);
       const attendanceBatch = batch(attendance);
+      if (isOnlineOwner() && !billBatch.length && !attendanceBatch.length) return;
       const snapshots = [...billBatch, ...attendanceBatch].map(row => [row, row.updatedAt || 0]);
       const outgoing = records => records.map(({ cloud, ...row }) => row);
       const remote = await request(connection.endpoint, "staff.sync", {
@@ -280,7 +345,7 @@ function doPost(e) {
       for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
       safeStorageSet("tc_bills", bills);
       safeStorageSet("tc_attendance", attendance);
-      if (Array.isArray(remote.menu)) {
+      if (!isOnlineOwner() && Array.isArray(remote.menu)) {
         const clean = value => String(value ?? "").replace(/[<>&"'`\\]/g, "");
         menu = remote.menu.filter(row => Number.isFinite(Number(row.id))).map(row => ({
           id: Number(row.id), name: clean(row.name), cat: clean(row.cat), price: Number(row.price) || 0
@@ -342,6 +407,7 @@ function doPost(e) {
         renderMenu();
       }
       pendingStaff = undefined;
+      ownerConnection = undefined;
       logout();
       refreshOwnerPanel();
     };
@@ -366,27 +432,43 @@ function doPost(e) {
     }
 
     async function refreshList(endpoint) {
-      const { ids } = await owner(endpoint, "staff.list");
+      const { ids, roles, canManageOwners } = await owner(endpoint, "staff.list");
       if (!isOwner() || endpoint !== shopLink()) return;
       const list = byId("cloudStaffList");
       list.replaceChildren();
       for (const id of ids.filter(id => staffId.test(id))) {
+        const role = roles?.[id] || "staff";
+        const roleLabel = { primary: "Primary owner", "co-owner": "Co-owner", staff: "Staff" }[role];
         const row = document.createElement("li");
-        const revoke = document.createElement("button");
-        revoke.type = "button";
-        revoke.className = "mini-btn del";
-        revoke.textContent = "Revoke";
-        run(revoke, async () => {
-          if (shopLink() !== endpoint) throw Error("Refresh the staff list for this shop first.");
-          await owner(endpoint, "staff.revoke", { id });
-          if (!isOwner()) return;
-          passwordField.value = "";
-          passwordField.hidden = true;
-          if (pendingStaff?.id === id) pendingStaff = undefined;
-          row.remove();
-          result.textContent = id + " revoked. Their next sign-in will be denied.";
-        });
-        row.append(id + " ", revoke);
+        row.append(id + " · " + roleLabel + " ");
+        const addAction = (label, action, message) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "mini-btn";
+          button.textContent = label;
+          run(button, async () => {
+            if (shopLink() !== endpoint) throw Error("Refresh the staff list for this shop first.");
+            await owner(endpoint, action, { id });
+            if (!isOwner()) return;
+            passwordField.value = "";
+            passwordField.hidden = true;
+            if (pendingStaff?.id === id) pendingStaff = undefined;
+            if (action === "owner.transfer") {
+              logoutApp();
+              showToast(message);
+              return;
+            }
+            await refreshList(endpoint);
+            result.textContent = message;
+          });
+          row.append(button, " ");
+        };
+        if (role === "staff") addAction("Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
+        if (canManageOwners && role !== "primary") {
+          if (role === "staff") addAction("Make Co-owner", "owner.promote", id + " is now a co-owner. They can sign in with their existing credentials.");
+          else addAction("Remove Co-owner access", "owner.demote", id + " is now Staff.");
+          addAction("Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
+        }
         list.append(row);
       }
     }
@@ -450,5 +532,5 @@ function doPost(e) {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, staffShopLink, refreshOwnerPanel, startStaffSession, staffActive, ownsRecord, tagRecord, syncStaff };
+  return { init, owner, staff, staffShopLink, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff };
 })();

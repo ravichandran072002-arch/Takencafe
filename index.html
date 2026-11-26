@@ -777,10 +777,11 @@
 
         <input type="text" id="gdriveUrlInput" placeholder="Paste Google Drive Web App URL (https://script.google.com/macros/s/.../exec)" style="margin-bottom:8px;" />
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <button class="btn btn-blue" onclick="saveGDriveConfig()">🔗 Connect & Sync</button>
+          <button class="btn btn-blue" id="connectCloudShop" onclick="saveGDriveConfig()">🔗 Connect & Sync</button>
           <button class="btn btn-dark" onclick="syncNowBothWays(true)">🔄 Sync Now</button>
         </div>
         <div id="cloudStaffPanel" hidden>
+          <div id="cloudOwnerSetup">
           <p>Owner setup requires the updated Apps Script and its private owner key.</p>
           <details>
             <summary>Generate keys for Apps Script setup</summary>
@@ -793,12 +794,14 @@
           <label for="cloudOwnerKey">Owner key</label>
           <input type="password" id="cloudOwnerKey" autocomplete="off" />
           <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
+          </div>
           <label for="cloudStaffId">Online staff ID</label>
           <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
           <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
           <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
           <p id="cloudStaffResult" role="status"></p>
           <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
+          <p>Co-owners can manage the shop and regular staff. Transferring ownership makes the selected account primary owner and ends your primary owner access.</p>
           <ul id="cloudStaffList"></ul>
         </div>
         <div id="gdriveSyncLog" style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:10px;">Status: Ready.</div>
@@ -1364,6 +1367,9 @@
     function getLoggedAccount() {
       const uid = sessionStorage.getItem("tc_logged_uid");
       const uname = sessionStorage.getItem("tc_logged_username");
+      if (uid?.startsWith("cloud-owner:")) {
+        return { username: uid.slice("cloud-owner:".length), role: "Owner", isOwnerOrMgr: true, hasAttendanceAccess: true };
+      }
       if (uid?.startsWith("cloud-staff:")) {
         return { username: uid.slice("cloud-staff:".length), role: "Staff", isOwnerOrMgr: false, hasAttendanceAccess: false };
       }
@@ -1399,7 +1405,7 @@
         badgeText.innerHTML = `Logged in as <b>${acc.username}</b> • Role: <b>${acc.role}</b>`;
       }
       const userCard = document.getElementById("userAccessControlCard");
-      if (userCard) userCard.style.display = acc.isOwnerOrMgr ? "block" : "none";
+      if (userCard) userCard.style.display = acc.isOwnerOrMgr && !sessionStorage.getItem("tc_logged_uid")?.startsWith("cloud-owner:") ? "block" : "none";
 
       const regCard = document.getElementById("attendanceRegisterCard");
       const restCard = document.getElementById("attendanceRestrictedCard");
@@ -2253,6 +2259,7 @@
     }
 
     async function saveGDriveConfig() {
+      if (RaviCloud.isOnlineOwner()) return;
       if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
       const url = document.getElementById("gdriveUrlInput").value.trim();
       settings.gdriveUrl = url; safeStorageSet("tc_settings", settings);
@@ -2267,6 +2274,7 @@
       if (isSyncing) { syncQueued = true; return; }
       isSyncing = true; document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
+        if (RaviCloud.isOnlineOwner()) await RaviCloud.syncStaff();
         const backup = await RaviCloud.owner(settings.gdriveUrl, "backup.read");
         if (backup.data && !backup.data.empty) await mergeTwoWayData(backup.data);
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
@@ -2285,7 +2293,7 @@
         if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
         document.getElementById("syncStatusBadge").textContent = "☁️ Offline";
-        if (notify) showToast("Offline / slow network — saved locally!");
+        if (notify || err.revoked) showToast(err.revoked ? err.message : "Offline / slow network — saved locally!");
       } finally {
         isSyncing = false;
         if (syncQueued) { syncQueued = false; setTimeout(() => syncNowBothWays(false), 350); }

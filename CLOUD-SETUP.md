@@ -24,3 +24,12 @@ Install matching builds on both devices and deploy the updated Apps Script versi
 - On each owner device, unlock the local Owner account and enter the same shop link and private owner key. The app merges menu, bills, attendance, expenses, deletions and shop details through the shared backup. Printer and theme preferences are device-specific.
 - Staff use the same online Staff ID and password on Android or Windows. Once signed in, they can bill and punch in/out during an outage. New staff bills and attendance wait on the device and upload when it reconnects. If the app restarts before uploading, sign in again with the same ID and shop link. Menu updates flow from the owner to staff. Existing bills created with older app versions do not upload as staff records automatically.
 - Drive/Sheets backup, expenses, reports and menu editing remain owner-only. Staff passwords are generated randomly and the server stores a keyed digest in Script Properties. Account credentials are excluded from Drive/Sheets backups.
+
+## Co-owner and ownership transfer
+
+Deploy this version of `Code.gs` to the existing web app and update the app on both devices. Keep the existing script properties and /exec URL.
+
+- The current primary owner signs in and opens **Settings → Refresh staff list**. If this shop still uses the original local owner, save its owner key for that session first.
+- **Make Co-owner** lets the selected staff account sign in with its current Online Staff ID and password and manage shop data and regular staff. Only the primary owner can assign or remove Co-owner access or transfer ownership.
+- **Transfer ownership to [staff ID]** changes the primary owner immediately. That person signs in under **Staff / online** with their existing ID and password and gets the Owner screen. The previous primary owner's online Owner access ends. If they had an online account, it becomes Staff. The old setup key can no longer authorize online owner requests after transfer.
+- Google Drive and Apps Script stay under the current Google account. The app transfer shares authorized shop access, and existing offline records already on a former owner's device remain on that device.

@@ -176,6 +176,16 @@ function raviStaffSync(req, props, pepper) {
   }
 }
 
+function raviRole(props, id) {
+  if (props.getProperty("RAVI_PRIMARY_ID") === id) return "primary";
+  return props.getProperty("co-owner:" + id) ? "co-owner" : "staff";
+}
+
+function raviVerifyAccount(props, pepper, req) {
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return false;
+  return raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
+}
+
 function doPost(e) {
   const bad = { ok: false };
   const props = PropertiesService.getScriptProperties();
@@ -186,26 +196,32 @@ function doPost(e) {
     if (!req || req.protocol !== RAVI_PROTOCOL || !/^[a-f0-9]{64}$/.test(ownerKey || "")
         || !/^[a-f0-9]{64}$/.test(staffPepper || "") || ownerKey === staffPepper) return raviReply(bad);
 
-    if (req.action === "staff.login" || req.action === "staff.sync") {
-      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return raviReply(bad);
-      if (req.action === "staff.sync") return raviStaffSync(req, props, staffPepper);
-      const stored = props.getProperty("staff:" + req.id);
-      const digest = raviStaffDigest(staffPepper, req.id, req.password);
-      if (!stored || !raviEqual(digest, stored)) return raviReply(bad);
-      return raviReply({ ok: true, staffId: req.id });
+    if (req.action === "staff.login") {
+      return raviReply(raviVerifyAccount(props, staffPepper, req)
+        ? { ok: true, staffId: req.id, role: raviRole(props, req.id) } : bad);
     }
-
-    if (!raviEqual(req.ownerKey, ownerKey)) return raviReply(bad);
-    if (req.action === "owner.check") return raviReply({ ok: true });
-    if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
-    if (req.action === "staff.list") {
-      const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
-      return raviReply({ ok: true, ids });
+    if (req.action === "staff.sync") {
+      if (!raviVerifyAccount(props, staffPepper, req)) return raviReply({ ok: false, reason: "revoked" });
+      return raviStaffSync(req, props, staffPepper);
     }
 
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
+      const primaryId = props.getProperty("RAVI_PRIMARY_ID");
+      const accountLogin = typeof req.ownerKey !== "string" && typeof req.password === "string";
+      const role = accountLogin
+        ? (raviVerifyAccount(props, staffPepper, req) ? raviRole(props, req.id) : "staff")
+        : (!primaryId && raviEqual(req.ownerKey, ownerKey) ? "primary" : "staff");
+      if (role === "staff") return raviReply(accountLogin || (primaryId && raviEqual(req.ownerKey, ownerKey))
+        ? { ok: false, reason: "revoked" } : bad);
+      if (req.action === "owner.check") return raviReply({ ok: true, role });
+      if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
+      if (req.action === "staff.list") {
+        const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
+        const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary" });
+      }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
         delete data.authUsers;
@@ -216,17 +232,34 @@ function doPost(e) {
         return raviReply({ ok: true, data: merged });
       }
 
-      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "")) return raviReply(bad);
-      const key = "staff:" + req.id;
-      if (req.action === "staff.revoke") {
+      const target = accountLogin ? req.target : req.id;
+      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(target || "")) return raviReply(bad);
+      const key = "staff:" + target;
+      const targetRole = raviRole(props, target);
+      if (req.action === "staff.revoke" && targetRole === "staff") {
         props.deleteProperty(key);
         return raviReply({ ok: true });
       }
-      if (req.action === "staff.create" && /^[A-Za-z0-9_-]{24}$/.test(req.password || "")) {
-        const digest = raviStaffDigest(staffPepper, req.id, req.password);
+      const password = accountLogin ? req.newPassword : req.password;
+      if (req.action === "staff.create" && /^[A-Za-z0-9_-]{24}$/.test(password || "")) {
+        const digest = raviStaffDigest(staffPepper, target, password);
         const existing = props.getProperty(key);
         if (existing && !raviEqual(existing, digest)) return raviReply({ ok: false, reason: "exists" });
         props.setProperty(key, digest);
+        return raviReply({ ok: true });
+      }
+      if (role !== "primary" || !props.getProperty(key) || targetRole === "primary") return raviReply(bad);
+      if (req.action === "owner.promote") {
+        props.setProperty("co-owner:" + target, "1");
+        return raviReply({ ok: true });
+      }
+      if (req.action === "owner.demote") {
+        props.deleteProperty("co-owner:" + target);
+        return raviReply({ ok: true });
+      }
+      if (req.action === "owner.transfer") {
+        props.deleteProperty("co-owner:" + target);
+        props.setProperty("RAVI_PRIMARY_ID", target);
         return raviReply({ ok: true });
       }
       return raviReply(bad);

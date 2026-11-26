@@ -130,8 +130,13 @@
         const result = await RaviCloud.staff(endpoint, id, pw);
         if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
             || $r("loginPassInput").value.trim() !== pw || RaviCloud.staffShopLink() !== endpoint) return;
-        RaviCloud.startStaffSession(endpoint, id, pw);
-        openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
+        if (result.role === "primary" || result.role === "co-owner") {
+          RaviCloud.startOnlineOwner(endpoint, id, pw);
+          openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
+        } else {
+          RaviCloud.startStaffSession(endpoint, id, pw);
+          openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
+        }
       } catch (error) {
         loginHint.textContent = error.message;
       }
