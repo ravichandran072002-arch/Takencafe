@@ -71,7 +71,6 @@
     }
     body { padding-bottom: 138px; }
 
-    /* LOGIN SCREEN OVERLAY */
     .login-screen {
       position: fixed; inset: 0; z-index: 300;
       background: linear-gradient(145deg, #160c07, #331b10);
@@ -93,7 +92,6 @@
       margin: 0 auto 8px;
     }
 
-    /* HEADER */
     header {
       background: linear-gradient(135deg, var(--espresso), var(--roast));
       color: #fff; padding: 10px 12px; width: 100%;
@@ -133,7 +131,6 @@
       background: var(--amber); color: #fff; font-weight: 700; cursor: pointer; border: none;
     }
 
-    /* NAVIGATION TABS */
     .nav-tabs {
       display: flex; background: var(--card); border-bottom: 1px solid var(--border);
       overflow-x: auto; position: sticky; top: 55px; z-index: 40;
@@ -168,7 +165,6 @@
     .field-group { margin-bottom: 10px; }
     .field-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 
-    /* SEARCH & CATEGORY PILLS */
     .search-wrap { position: relative; width: 100%; }
     .search-wrap input { padding-left: 34px; border-radius: 10px; }
     .search-icon {
@@ -190,7 +186,6 @@
     }
     input:focus, select:focus, textarea:focus { outline: none; border-color: var(--amber); }
 
-    /* MENU GRID & CARDS */
     .menu-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
       gap: 8px; max-height: 62vh; overflow-y: auto; padding-top: 4px; width: 100%;
@@ -217,7 +212,6 @@
     .menu-item .name { font-weight: 700; font-size: 13px; margin: 3px 0; line-height: 1.25; color: var(--text); word-break: break-word; pointer-events: none; }
     .menu-item .price { font-weight: 800; color: var(--green); font-size: 14px; pointer-events: none; }
 
-    /* STICKY LIVE BILL BAR */
     .live-bill-bar {
       position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-width: 100%;
       background: #1e110a; color: #fff; z-index: 60;
@@ -242,7 +236,6 @@
     }
     .live-bar-main { display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%; }
 
-    /* MOBILE BILL DRAWER */
     .drawer-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
       z-index: 90; align-items: flex-end; justify-content: center;
@@ -263,7 +256,6 @@
       background: var(--bg); color: var(--text); font-weight: 800; cursor: pointer; font-size: 15px;
     }
 
-    /* BUTTONS */
     .btn {
       padding: 10px 12px; border: none; border-radius: 10px; font-weight: 700;
       font-size: 13px; cursor: pointer; width: 100%;
@@ -276,7 +268,6 @@
     .btn-red { background: #b91c1c; color: #fff; }
     .btn-outline { background: var(--input-bg); border: 1px solid var(--border); color: var(--text); }
 
-    /* KPI DASHBOARD CARDS */
     .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
     @media (min-width: 720px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
     .kpi {
@@ -382,7 +373,6 @@
   </style>
 </head>
 <body>
-  <!-- SYSTEM LOGIN SCREEN -->
   <div class="login-screen" id="appLoginScreen">
     <div class="login-box">
       <div style="text-align:center;margin-bottom:14px;">
@@ -406,12 +396,11 @@
 
       <button class="btn btn-primary" style="margin-top:6px;font-size:14px;padding:11px;" onclick="handleAppLogin()">🔓 Login to RAVI</button>
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint">
-        Auto-syncs with Google Drive & Google Sheet
+        Works Offline & Syncs with Google Drive / Sheet
       </div>
     </div>
   </div>
 
-  <!-- HEADER (TOUCH SHOP/APP NAME -> QUICK HOME) -->
   <header>
     <div class="brand-box" onclick="goHome()" title="Tap to return Home (POS Billing)">
       <div class="r-logo-badge">R</div>
@@ -437,7 +426,6 @@
   </div>
 
   <div class="container">
-    <!-- POS TAB -->
     <div id="tab-pos" class="section active">
       <div class="grid-pos">
         <div class="card">
@@ -449,7 +437,6 @@
           <div class="menu-grid" id="menuGrid" onclick="handleMenuGridClick(event)"></div>
         </div>
 
-        <!-- DESKTOP / WINDOWS SIDE-BY-SIDE BILL CARD -->
         <div class="card desktop-bill-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span class="card-title">Current Live Bill</span>
@@ -502,7 +489,6 @@
       </div>
     </div>
 
-    <!-- STAFF ATTENDANCE (IN / OUT TIME) TAB -->
     <div id="tab-staff" class="section">
       <div class="card" style="border:2px solid var(--amber);">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -552,7 +538,6 @@
       </div>
     </div>
 
-    <!-- REPORTS & EXCEL TAB -->
     <div id="tab-summary" class="section">
       <div class="kpi-grid">
         <div class="kpi"><small>Today's Total Sales</small><strong id="kpiSales">₹0</strong><span id="kpiBillsSub">0 bills</span></div>
@@ -609,7 +594,6 @@
       </div>
     </div>
 
-    <!-- EXPENSES TAB -->
     <div id="tab-expenses" class="section">
       <div class="card">
         <span class="card-title">💸 Log Daily Expense</span>
@@ -632,7 +616,6 @@
       </div>
     </div>
 
-    <!-- MENU EDIT TAB -->
     <div id="tab-menu" class="section">
       <div class="card">
         <span class="card-title">+ Add New Menu Item</span>
@@ -658,9 +641,7 @@
       </div>
     </div>
 
-    <!-- DEDICATED SETTINGS TAB -->
     <div id="tab-settings" class="section">
-      <!-- 1. SHOP / KADAI DETAILS SETUP -->
       <div class="card" style="border:2px solid var(--amber);">
         <span class="card-title">🏪 Kadai / Shop Details Setup</span>
         <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">
@@ -704,7 +685,6 @@
         </div>
       </div>
 
-      <!-- 2. UI THEME (DAY / DARK MODE) & LOCK -->
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
           <span class="card-title">🌗 Appearance & Account</span>
@@ -717,7 +697,6 @@
         </div>
       </div>
 
-      <!-- 3. MULTI-USER LOGIN IDs & ATTENDANCE ACCESS CONTROL -->
       <div class="card" id="userAccessControlCard">
         <span class="card-title">🔐 Login IDs & Attendance Access Control</span>
         <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">
@@ -769,7 +748,6 @@
         </div>
       </div>
 
-      <!-- 4. GOOGLE DRIVE TWO-WAY SYNC & PRINTER -->
       <div class="card" style="border:1px solid var(--blue);">
         <span class="card-title" style="color:var(--blue);">☁️ Google Drive / Google Sheet Sync & Printer</span>
         <p style="font-size:12px;color:var(--muted);margin:5px 0 8px;">
@@ -799,7 +777,6 @@
         </details>
       </div>
 
-      <!-- 5. PRIVACY POLICY & ABOUT -->
       <div class="card">
         <span class="card-title">🛡️ Privacy Policy & About</span>
         <div class="policy-box" style="margin-top:8px;">
@@ -807,7 +784,7 @@
           <p style="margin:0 0 8px;"><b>2. Role-Based Access & Security:</b> Owner and Manager role controls restrict attendance logs and administrative settings from unauthorized staff access, backed by deletion PIN locks.</p>
           <p style="margin:0 0 8px;"><b>3. Live Sheet & Excel Reports:</b> Every sync updates your live Google Sheet and lets you export clean Excel (<code>.xlsx</code>) reports with totals anytime.</p>
           <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:11px;">
-            <span>RAVI POS v2.5</span>
+            <span>RAVI POS v2.6</span>
             <span>Developed by Ravi</span>
           </div>
         </div>
@@ -815,7 +792,6 @@
     </div>
   </div>
 
-  <!-- STICKY BOTTOM LIVE BILL BAR FOR MOBILE -->
   <div class="live-bill-bar" id="liveBillBar">
     <div class="live-chips" id="liveChipsRow">
       <span style="font-size:11px;color:#e7d8ce;">Tap items above — live bill updates right here</span>
@@ -833,7 +809,6 @@
     </div>
   </div>
 
-  <!-- MOBILE EXPANDABLE LIVE BILL DRAWER -->
   <div class="drawer-overlay" id="billDrawerOverlay" onclick="if(event.target===this) closeBillDrawer()">
     <div class="bill-drawer">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:8px;">
@@ -886,7 +861,6 @@
     </div>
   </div>
 
-  <!-- EMPLOYEE SHIFT IN & OUT MODAL -->
   <div class="modal" id="staffLoginModal">
     <div class="card" style="width:350px;max-width:94vw;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -911,7 +885,6 @@
     </div>
   </div>
 
-  <!-- PIN PROTECTED DELETE MODAL -->
   <div class="modal" id="pinDeleteModal" onclick="if(event.target===this) closePinModal()">
     <div class="card" style="width:320px;max-width:94vw;text-align:center;">
       <strong style="font-size:16px;color:var(--red);" id="pinModalTitle">🔒 Delete Verification</strong>
@@ -924,7 +897,6 @@
     </div>
   </div>
 
-  <!-- EDIT ITEM MODAL -->
   <div class="modal" id="editItemModal">
     <div class="card" style="width:330px;max-width:94vw;">
       <strong style="font-size:16px;">Edit Menu Item</strong>
@@ -947,7 +919,6 @@
     </div>
   </div>
 
-  <!-- RECEIPT & PRINTER MODAL -->
   <div class="modal" id="receiptModal">
     <div class="receipt" id="receiptPrintArea">
       <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:6px;">
@@ -1480,7 +1451,7 @@
         }
         if (settings.gdriveUrl) triggerBackgroundSync();
       } else {
-        document.getElementById("loginSyncHint").textContent = "Auto-syncs with Google Drive & Google Sheet";
+        document.getElementById("loginSyncHint").textContent = "Works Offline & Syncs with Google Drive / Sheet";
         showToast("❌ Invalid Login ID or Password!");
       }
     }
@@ -2138,7 +2109,6 @@
       document.getElementById("menuManagerList").innerHTML = filtered.map(m => `<div class="mgr-row"><div class="mgr-info"><div style="font-weight:700;font-size:13px;">${m.name}</div><small style="color:var(--muted);">${m.cat}</small></div><div class="mgr-controls"><button class="mini-btn" onclick="adjustItemPrice(${m.id}, -5)">-5</button><input type="number" class="price-input" value="${m.price}" onchange="setDirectItemPrice(${m.id}, this.value)" /><button class="mini-btn" onclick="adjustItemPrice(${m.id}, 5)">+5</button><button class="mini-btn edit" onclick="openEditModal(${m.id})">Edit</button><button class="mini-btn del ${pendingDeleteId === m.id ? 'confirm' : ''}" onclick="deleteMenuItem(${m.id})">${pendingDeleteId === m.id ? 'Confirm?' : 'Remove'}</button></div></div>`).join("");
     }
 
-    /* OFFLINE PURE-JS MULTI-SHEET EXCEL (.XLSX) GENERATOR */
     function crc32(bytes) { let crc = -1; for (let i = 0; i < bytes.length; i++) { crc ^= bytes[i]; for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0); } return (crc ^ -1) >>> 0; }
     function xmlEsc(val) { return String(val ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
     function colLetter(n) { let s = ""; while (n >= 0) { s = String.fromCharCode((n % 26) + 65) + s; n = Math.floor(n / 26) - 1; } return s; }
@@ -2265,7 +2235,7 @@
         if (getRes.ok) { const remoteData = await getRes.json(); if (remoteData && !remoteData.empty) mergeTwoWayData(remoteData); }
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
-          version: 18, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
+          version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
           menu, deletedMenuIds, deletedBillIds, deletedExpenseIds, deletedUserIds, bills, expenses, attendance, authUsers,
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
@@ -2352,6 +2322,12 @@
       showToast("✅ Kadai details saved & synced!");
     }
 
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+
     setInterval(() => { if (settings.gdriveUrl && navigator.onLine && !document.hidden) syncNowBothWays(false); }, 25000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden && settings.gdriveUrl && navigator.onLine) syncNowBothWays(false); });
 
@@ -2364,4 +2340,3 @@
   </script>
 </body>
 </html>
-
