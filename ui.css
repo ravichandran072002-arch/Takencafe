@@ -1,0 +1,34 @@
+/* RAVI UI polish — overrides only */
+:root { --radius: 16px; --ring: 0 0 0 3px rgba(245,158,11,.28); }
+body { font-feature-settings: "tnum"; -webkit-font-smoothing: antialiased; }
+header { padding-top: calc(10px + env(safe-area-inset-top)); backdrop-filter: blur(8px); }
+.nav-tabs { top: calc(55px + env(safe-area-inset-top)); box-shadow: 0 2px 8px rgba(30,17,10,.06); }
+.nav-tabs button { transition: .18s; border-radius: 10px 10px 0 0; }
+.card { border-radius: var(--radius); transition: box-shadow .2s; }
+.card:hover { box-shadow: 0 6px 22px rgba(30,17,10,.10); }
+input, select, textarea { border-radius: 12px; min-height: 42px; transition: border-color .15s, box-shadow .15s; }
+input:focus, select:focus, textarea:focus { box-shadow: var(--ring); }
+.btn { min-height: 44px; border-radius: 12px; letter-spacing: .2px; transition: transform .1s, filter .15s; }
+.btn:active { transform: scale(.97); }
+.btn-primary { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 3px 10px rgba(217,119,6,.35); }
+.btn-green { background: linear-gradient(135deg, #16a34a, #15803d); }
+.btn-dark { background: linear-gradient(135deg, #3a2114, #1e110a); }
+.pill { padding: 8px 14px; transition: .15s; }
+.pill.active { box-shadow: 0 2px 8px rgba(245,158,11,.35); }
+.menu-grid { gap: 10px; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); }
+.menu-item { border-radius: 14px; min-height: 92px; box-shadow: 0 1px 4px rgba(30,17,10,.06); transition: transform .12s, box-shadow .15s; }
+.menu-item:hover { box-shadow: 0 6px 16px rgba(30,17,10,.14); transform: translateY(-2px); }
+.menu-item .name { font-size: 14px; }
+.menu-item .price { font-size: 15px; }
+.kpi { border-radius: 14px; }
+.kpi strong { font-size: 20px; }
+.live-bill-bar { padding-bottom: calc(10px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; }
+body { padding-bottom: calc(138px + env(safe-area-inset-bottom)); }
+.bill-drawer { border-radius: 24px 24px 0 0; }
+.modal .card, .receipt { border-radius: 18px; }
+.login-box { border-radius: 22px; padding: 26px 22px; }
+.r-monogram-lg { width: 64px; height: 64px; font-size: 36px; box-shadow: 0 6px 18px rgba(245,158,11,.3); }
+th { position: sticky; top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+tbody tr:hover { background: var(--amber-soft); }
+.toast { box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+@media (max-width: 480px) { .container { padding: 8px; } .kpi strong { font-size: 18px; } }
