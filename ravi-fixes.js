@@ -134,7 +134,7 @@
     safeStorageSet("tc_auth_users", authUsers);
     $r("newLoginId").value = ""; $r("newLoginPass").value = "";
     renderLoginUsersTable(); triggerBackgroundSync();
-    showToast(`✅ ${role} ID "${username}" created & synced!`);
+    showToast(`✅ ${role} ID "${username}" created locally; sync pending`);
   };
 
   window.resetUserPass = async function (uid) {
@@ -153,7 +153,7 @@
       const priv = u.role === "Owner" || u.role === "Manager" || u.role === "Admin";
       const access = priv ? `<span class="status-pill status-in">✅ Full Access</span>`
         : `<button class="mini-btn ${u.canViewAttendance ? "grant" : "del"}" onclick="toggleStaffAttendanceAccess('${u.uid}')">${u.canViewAttendance ? "✅ Allowed (Tap to Off)" : "🔒 Off (Tap to Grant)"}</button>`;
-      return `<tr><td><b>${u.username}</b></td><td><span class="mode-badge ${priv ? "owner" : "cash"}">${u.role}</span></td><td>${access}</td><td>••••••• <button class="mini-btn" style="margin-left:4px;padding:3px 6px;" onclick="resetUserPass('${u.uid}')">Reset</button></td><td><button class="mini-btn del" onclick="promptDeleteLoginUser('${u.uid}')">🗑️ Del</button></td></tr>`;
+      return `<tr><td><b>${u.username}</b></td><td><span class="mode-badge ${priv ? "owner" : "cash"}">${["Owner","Manager","Admin","Staff"].includes(u.role) ? u.role : "Staff"}</span></td><td>${access}</td><td>••••••• <button class="mini-btn" style="margin-left:4px;padding:3px 6px;" onclick="resetUserPass('${u.uid}')">Reset</button></td><td><button class="mini-btn del" onclick="promptDeleteLoginUser('${u.uid}')">🗑️ Del</button></td></tr>`;
     }).join("");
   };
 
@@ -178,7 +178,7 @@
       $r("billDeletePinInput").value = ""; $r("billDeletePinInput").focus(); return;
     }
     const { type, uid } = pendingDeleteTarget;
-    if (!acc.isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!");
+    if (sessionStorage.getItem("tc_session_logged") !== "1" || !acc.isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!");
     if (type === "bill") {
       const t = bills.find(b => (b.uid || b.billNo) === uid);
       bills = bills.filter(b => (b.uid || b.billNo) !== uid);
@@ -192,6 +192,8 @@
       closePinModal(); renderExpenses(); if (activeTabName === "summary") renderSummary(); showToast("🗑️ Expense deleted & synced!");
     } else if (type === "user") {
       const t = authUsers.find(u => u.uid === uid);
+      if (t?.role === "Owner" && acc.role !== "Owner") return showToast("Only the Owner can delete an Owner account");
+      if (t?.role === "Owner" && authUsers.filter(u => u.role === "Owner").length <= 1) return showToast("Cannot delete the last Owner account");
       authUsers = authUsers.filter(u => u.uid !== uid);
       if (!deletedUserIds.includes(uid)) deletedUserIds.push(uid);
       safeStorageSet("tc_auth_users", authUsers); safeStorageSet("tc_deleted_user_ids", deletedUserIds);
@@ -204,8 +206,8 @@
     if (getLoggedAccount().role !== "Owner") return showToast("Owner mattum dhaan PIN maatha mudiyum");
     const stored = localStorage.getItem(PIN_KEY);
     if (stored) { const cur = prompt("Current Delete PIN:"); if (!cur || !(await verifyPw(cur.trim(), stored, "pin"))) return showToast("❌ Wrong current PIN"); }
-    const np = prompt("New 4-digit Delete PIN:");
-    if (!np || !/^\d{6}$/.test(np.trim())) return showToast("PIN must be exactly 4 digits");
+    const np = prompt("New 6-digit Delete PIN:");
+    if (!np || !/^\d{6}$/.test(np.trim())) return showToast("PIN must be exactly 6 digits");
     localStorage.setItem(PIN_KEY, await pinHash(np.trim())); showToast("✅ Delete PIN updated");
   }
 
@@ -254,7 +256,7 @@
     opt = opt || {};
     try {
       const base = settings.gdriveUrl, tok = getTok();
-      if (tok && base && typeof url === "string" && url.startsWith(base)) {
+      if (tok && base && typeof url === "string" && (url === base || url.startsWith(base + "?"))) {
         if (!opt.method || opt.method === "GET") url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(tok);
         else if (typeof opt.body === "string") { const o = JSON.parse(opt.body); o.token = tok; opt = { ...opt, body: JSON.stringify(o) }; }
       }
