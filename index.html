@@ -1887,7 +1887,11 @@
         sub: itemsSub, packing, discount, gst, total: grand
       };
       RaviCloud.tagRecord(bill);
-      bills.unshift(bill); safeStorageSet("tc_bills", bills);
+      bills.unshift(bill);
+      if (!safeStorageSet("tc_bills", bills)) {
+        bills.shift();
+        return;
+      }
       lastBill = bill; clearCart();
       document.getElementById("custNameDesk").value = ""; document.getElementById("custNameMob").value = "";
       triggerBackgroundSync();
@@ -2311,7 +2315,7 @@
       if (Array.isArray(remote.deletedMenuIds)) { remote.deletedMenuIds.forEach(id => { if (!deletedMenuIds.includes(id)) deletedMenuIds.push(id); }); safeStorageSet("tc_deleted_menu_ids", deletedMenuIds); }
       if (Array.isArray(remote.deletedBillIds)) { remote.deletedBillIds.forEach(uid => { if (!deletedBillIds.includes(uid)) deletedBillIds.push(uid); }); safeStorageSet("tc_deleted_bill_ids", deletedBillIds); }
       if (Array.isArray(remote.deletedExpenseIds)) { remote.deletedExpenseIds.forEach(uid => { if (!deletedExpenseIds.includes(uid)) deletedExpenseIds.push(uid); }); safeStorageSet("tc_deleted_expense_ids", deletedExpenseIds); }
-      if (Array.isArray(remote.menu) && remote.menu.length) {
+      if (Array.isArray(remote.menu)) {
         const map = new Map();
         menu.forEach(m => { if (!deletedMenuIds.includes(m.id)) map.set(m.id, m); });
         remote.menu.forEach(rm => { if (deletedMenuIds.includes(rm.id)) return; const localItem = map.get(rm.id); if (!localItem || (rm.updatedAt || 0) > (localItem.updatedAt || 0)) map.set(rm.id, rm); });

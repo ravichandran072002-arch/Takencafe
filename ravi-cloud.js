@@ -237,6 +237,7 @@ function doPost(e) {
   function startStaffSession(endpoint, id, password) {
     staffConnection = { endpoint, id, password };
     localMenu = menu;
+    clearCart();
     clearTimeout(staffExpiry);
     staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
     syncStaff();
