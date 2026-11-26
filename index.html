@@ -1301,6 +1301,12 @@
     }
     let authUsers = initAuthUsers();
 
+    const DEFAULT_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
+    if (!settings.gdriveUrl) {
+      settings.gdriveUrl = localStorage.getItem("tc_gdrive_url") || DEFAULT_GDRIVE_URL;
+      safeStorageSet("tc_settings", settings);
+    }
+
     let cart = [];
     let activeCat = "All";
     let lastBill = null;
@@ -2337,11 +2343,7 @@
     checkSessionLogin();
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
     if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
-const DEFAULT_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
-if (!settings.gdriveUrl) {
-  settings.gdriveUrl = localStorage.getItem("tc_gdrive_url") || DEFAULT_GDRIVE_URL;
-  safeStorageSet("tc_settings", settings);
-}
+
   </script>
 </body>
 </html>
