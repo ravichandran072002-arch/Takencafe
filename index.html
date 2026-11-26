@@ -390,10 +390,6 @@
           <option value="staff">Staff / online</option>
         </select>
       </div>
-      <div class="field-group" id="staffEndpointRow" hidden>
-        <label for="staffEndpoint">Shop link</label>
-        <input type="url" id="staffEndpoint" autocomplete="off" />
-      </div>
       <div class="field-group">
         <label>Login ID</label>
         <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
@@ -402,8 +398,8 @@
         <label>Password</label>
         <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" />
       </div>
-      <div class="field-group">
-        <label>Staff Name (For Morning In-Time - Optional)</label>
+      <div class="field-group" id="localLoginStaffName">
+        <label for="loginStaffNameInput">Staff Name (For Morning In-Time - Optional)</label>
         <input type="text" id="loginStaffNameInput" placeholder="e.g. Karthik, Priya" />
       </div>
 
@@ -422,6 +418,14 @@
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
         Owner sign-in works offline. Online staff sign-in needs internet.
       </div>
+      <details id="staffShopSetup" hidden style="margin-top:10px;">
+        <summary>Shop setup</summary>
+        <div class="field-group">
+          <label for="staffEndpoint">Shop link</label>
+          <input type="url" id="staffEndpoint" autocomplete="off" />
+          <small>Enter this once using the link from your shop owner.</small>
+        </div>
+      </details>
     </form>
   </div>
 
@@ -1349,7 +1353,8 @@
 
     // Do not connect fresh installations to a shared/public backup endpoint.
     // Existing installations must explicitly configure their own Apps Script URL.
-    const DEFAULT_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
+    const DEFAULT_RAVI_ENDPOINT = "";
+    const OLD_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
     if (!settings.gdriveUrl) {
       const previousUrl = localStorage.getItem("tc_gdrive_url") || "";
       settings.gdriveUrl = previousUrl;

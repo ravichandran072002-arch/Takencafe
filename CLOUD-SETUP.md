@@ -14,7 +14,7 @@ Use the Google account that owns the Apps Script project behind your shop's curr
 ## Create and use an online Staff ID
 
 1. In the owner app, enter a unique online Staff ID and choose **Create Staff ID and password**. Give the staff member the ID, generated password and shop link privately.
-2. On their phone, they install the updated app, choose **Staff / online**, and enter the shop link, ID and password.
+2. On their phone, they install the updated app, choose **Staff / online**, and enter the ID and password. If the app asks for the shop link, enter it under **Shop setup** on that device. The app remembers the link after the first successful staff sign-in.
 3. Use **Refresh staff list → Revoke** to prevent future sign-ins with an old password. To replace a password, revoke the ID and create it again. An online staff session rechecks access during sync. It also locks on reload, logout or after eight hours.
 
 ## Android and Windows sync

@@ -131,7 +131,7 @@
         if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
             || $r("loginPassInput").value.trim() !== pw || $r("staffEndpoint").value.trim() !== endpoint) return;
         RaviCloud.startStaffSession(endpoint, id, pw);
-        openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" }, staff);
+        openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
       } catch (error) {
         loginHint.textContent = error.message;
       }

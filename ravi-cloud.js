@@ -168,8 +168,10 @@ function doPost(e) {
 }
 `;
 
+  const validEndpoint = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+
   function endpointUrl(raw) {
-    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(raw)) {
+    if (!validEndpoint.test(raw)) {
       throw Error("Enter your shop’s Google Apps Script /exec link.");
     }
     return raw;
@@ -180,6 +182,7 @@ function doPost(e) {
     const probe = await fetchWithTimeout(endpoint + "?raviProtocol=1", { cache: "no-store" }, 8000);
     const info = await probe.json().catch(() => null);
     if (!probe.ok || info?.protocol !== protocol) {
+      if (action === "staff.login") byId("staffShopSetup").open = true;
       throw Error("The owner must deploy the updated RAVI Apps Script for this link.");
     }
     const response = await fetchWithTimeout(endpoint, {
@@ -236,6 +239,8 @@ function doPost(e) {
 
   function startStaffSession(endpoint, id, password) {
     staffConnection = { endpoint, id, password };
+    rememberStaffShop(endpoint);
+    safeStorageSet("tc_login_mode", "staff");
     localMenu = menu;
     clearCart();
     clearTimeout(staffExpiry);
@@ -301,6 +306,12 @@ function doPost(e) {
     }
   }
 
+  function rememberStaffShop(endpoint) {
+    safeStorageSet("tc_staff_shop", endpoint);
+    byId("staffEndpoint").value = endpoint;
+    byId("staffShopSetup").open = false;
+  }
+
   function init() {
     const keyField = byId("cloudOwnerKey");
     const passwordField = byId("cloudStaffPassword");
@@ -308,12 +319,26 @@ function doPost(e) {
     const shopField = byId("gdriveUrlInput");
     let pendingStaff;
     const mode = byId("loginMode");
-    byId("staffEndpoint").value = DEFAULT_RAVI_ENDPOINT;
+    const endpointField = byId("staffEndpoint");
+    const shopSetup = byId("staffShopSetup");
+    endpointField.value = [safeStorageGet("tc_staff_shop", ""), settings.gdriveUrl, DEFAULT_RAVI_ENDPOINT]
+      .find(url => typeof url === "string" && url !== OLD_RAVI_ENDPOINT && validEndpoint.test(url)) || "";
+    mode.value = safeStorageGet("tc_login_mode", DEFAULT_RAVI_ENDPOINT ? "staff" : "local") === "staff" ? "staff" : "local";
+
+    function updateLoginMode() {
+      const onlineStaff = mode.value === "staff";
+      shopSetup.hidden = !onlineStaff;
+      shopSetup.open = onlineStaff && !endpointField.value;
+      byId("localLoginStaffName").hidden = onlineStaff;
+    }
+
     mode.addEventListener("change", () => {
-      byId("staffEndpointRow").hidden = mode.value !== "staff";
+      updateLoginMode();
+      safeStorageSet("tc_login_mode", mode.value);
       byId("loginPassInput").value = "";
       byId("loginPassInput").dispatchEvent(new Event("input"));
     });
+    updateLoginMode();
 
     const logout = window.logoutApp;
     window.logoutApp = function () {
@@ -393,6 +418,7 @@ function doPost(e) {
       keyField.value = "";
       shopField.value = endpoint;
       settings.gdriveUrl = endpoint;
+      rememberStaffShop(endpoint);
       safeStorageSet("tc_settings", settings);
       result.textContent = "Owner key saved for this session.";
       triggerBackgroundSync();
