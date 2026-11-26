@@ -1351,9 +1351,8 @@
     }
     let authUsers = initAuthUsers();
 
-    // Do not connect fresh installations to a shared/public backup endpoint.
-    // Existing installations must explicitly configure their own Apps Script URL.
-    const DEFAULT_RAVI_ENDPOINT = "";
+    // The shop endpoint is public. Each request still needs the appropriate credentials.
+    const DEFAULT_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwtywyunJvq9ugqCCGQ4V7YD2QvzrvrEqTpV-BlDunZ5ZJjDu6LtiGmXlcaTCG2P8b3aw/exec";
     const OLD_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
     if (!settings.gdriveUrl) {
       const previousUrl = localStorage.getItem("tc_gdrive_url") || "";
