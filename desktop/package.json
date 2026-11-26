@@ -1,0 +1,29 @@
+{
+  "name": "takencafe",
+  "version": "1.0.0",
+  "description": "TakenCafe POS",
+  "main": "main.cjs",
+  "author": "TakenCafe",
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.takencafe.pos",
+    "productName": "TakenCafe",
+    "files": [
+      "main.cjs",
+      "index.html"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
