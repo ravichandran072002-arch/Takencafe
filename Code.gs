@@ -209,13 +209,23 @@ function doPost(e) {
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
       const primaryId = props.getProperty("RAVI_PRIMARY_ID");
+      if (req.action === "owner.bootstrap" && raviEqual(req.ownerKey, ownerKey)) {
+        if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return raviReply(bad);
+        const key = "staff:" + req.id;
+        const digest = raviStaffDigest(staffPepper, req.id, req.password);
+        if (primaryId) return raviReply(primaryId === req.id && raviEqual(digest, props.getProperty(key))
+          ? { ok: true } : { ok: false, reason: "revoked" });
+        if (props.getProperty(key)) return raviReply({ ok: false, reason: "exists" });
+        props.setProperties({ [key]: digest, RAVI_PRIMARY_ID: req.id });
+        return raviReply({ ok: true });
+      }
       const accountLogin = typeof req.ownerKey !== "string" && typeof req.password === "string";
       const role = accountLogin
         ? (raviVerifyAccount(props, staffPepper, req) ? raviRole(props, req.id) : "staff")
         : (!primaryId && raviEqual(req.ownerKey, ownerKey) ? "primary" : "staff");
       if (role === "staff") return raviReply(accountLogin || (primaryId && raviEqual(req.ownerKey, ownerKey))
         ? { ok: false, reason: "revoked" } : bad);
-      if (req.action === "owner.check") return raviReply({ ok: true, role });
+      if (req.action === "owner.check") return raviReply({ ok: true, role, canBootstrap: !accountLogin });
       if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();

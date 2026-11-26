@@ -25,6 +25,13 @@ Install matching builds on both devices and deploy the updated Apps Script versi
 - Staff use the same online Staff ID and password on Android or Windows. Once signed in, they can bill and punch in/out during an outage. New staff bills and attendance wait on the device and upload when it reconnects. If the app restarts before uploading, sign in again with the same ID and shop link. Menu updates flow from the owner to staff. Existing bills created with older app versions do not upload as staff records automatically.
 - Drive/Sheets backup, expenses, reports and menu editing remain owner-only. Staff passwords are generated randomly and the server stores a keyed digest in Script Properties. Account credentials are excluded from Drive/Sheets backups.
 
+## Set up automatic Owner sync once
+
+1. Use **Owner / this device**, open **Settings**, and save the setup key once.
+2. Choose an **Online Owner ID**. Generate the Owner password and save it privately before proceeding.
+3. Tap **Activate Owner & Sync**. This creates the primary online Owner account, retires the setup key for online access, and starts sync. Use the new ID and password under **Staff / online** for later sign-ins.
+4. While the app is open and online, changes trigger sync automatically. The app also tries again after reconnection.
+
 ## Co-owner and ownership transfer
 
 Deploy this version of `Code.gs` to the existing web app and update the app on both devices. Keep the existing script properties and /exec URL.

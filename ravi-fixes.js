@@ -131,6 +131,7 @@
         if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
             || $r("loginPassInput").value.trim() !== pw || RaviCloud.staffShopLink() !== endpoint) return;
         if (result.role === "primary" || result.role === "co-owner") {
+          clearCart();
           RaviCloud.startOnlineOwner(endpoint, id, pw);
           openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
         } else {
@@ -390,5 +391,5 @@
     }
   };
   if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
-  RaviCloud.init();
+  RaviCloud.init(openSession);
 })();

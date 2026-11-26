@@ -138,13 +138,23 @@ function doPost(e) {
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
       const primaryId = props.getProperty("RAVI_PRIMARY_ID");
+      if (req.action === "owner.bootstrap" && raviEqual(req.ownerKey, ownerKey)) {
+        if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return raviReply(bad);
+        const key = "staff:" + req.id;
+        const digest = raviStaffDigest(staffPepper, req.id, req.password);
+        if (primaryId) return raviReply(primaryId === req.id && raviEqual(digest, props.getProperty(key))
+          ? { ok: true } : { ok: false, reason: "revoked" });
+        if (props.getProperty(key)) return raviReply({ ok: false, reason: "exists" });
+        props.setProperties({ [key]: digest, RAVI_PRIMARY_ID: req.id });
+        return raviReply({ ok: true });
+      }
       const accountLogin = typeof req.ownerKey !== "string" && typeof req.password === "string";
       const role = accountLogin
         ? (raviVerifyAccount(props, staffPepper, req) ? raviRole(props, req.id) : "staff")
         : (!primaryId && raviEqual(req.ownerKey, ownerKey) ? "primary" : "staff");
       if (role === "staff") return raviReply(accountLogin || (primaryId && raviEqual(req.ownerKey, ownerKey))
         ? { ok: false, reason: "revoked" } : bad);
-      if (req.action === "owner.check") return raviReply({ ok: true, role });
+      if (req.action === "owner.check") return raviReply({ ok: true, role, canBootstrap: !accountLogin });
       if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
@@ -269,6 +279,12 @@ function doPost(e) {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !allowed;
     byId("cloudOwnerSetup").hidden = isOnlineOwner();
+    byId("onlineOwnerActivation").hidden = !allowed || !ownerConnection?.canBootstrap;
+    if (!allowed || isOnlineOwner()) {
+      byId("onlineOwnerId").value = "";
+      byId("onlineOwnerPassword").value = "";
+      byId("onlineOwnerPasswordRow").hidden = true;
+    }
     byId("gdriveUrlInput").readOnly = isOnlineOwner();
     byId("connectCloudShop").hidden = isOnlineOwner();
     if (!allowed) {
@@ -295,7 +311,6 @@ function doPost(e) {
     safeStorageSet("tc_login_mode", "staff");
     safeStorageSet("tc_settings", settings);
     staffConnection = { endpoint, id, password };
-    clearCart();
     clearTimeout(staffExpiry);
     staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
   }
@@ -374,7 +389,12 @@ function doPost(e) {
       .find(url => typeof url === "string" && url !== OLD_RAVI_ENDPOINT && validEndpoint.test(url)) || "";
   }
 
-  function init() {
+  function createPassword() {
+    const bytes = crypto.getRandomValues(new Uint8Array(18));
+    return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_");
+  }
+
+  function init(openSession) {
     const keyField = byId("cloudOwnerKey");
     const passwordField = byId("cloudStaffPassword");
     const result = byId("cloudStaffResult");
@@ -484,9 +504,11 @@ function doPost(e) {
       const key = keyField.value.trim();
       const endpoint = shopLink();
       if (!ownerKeyFormat.test(key)) throw Error("Enter the 64-character owner key from Script Properties.");
-      await request(endpoint, "owner.check", { ownerKey: key });
+      const ownerAccess = await request(endpoint, "owner.check", { ownerKey: key });
       if (!isOwner() || endpoint !== shopLink() || keyField.value.trim() !== key) return;
-      ownerConnection = { endpoint, key };
+      ownerConnection = { endpoint, key, canBootstrap: ownerAccess.canBootstrap === true };
+      refreshOwnerPanel();
+      byId("onlineOwnerId").value = getLoggedAccount().username.trim().toLowerCase();
       keyField.value = "";
       shopField.value = endpoint;
       settings.gdriveUrl = endpoint;
@@ -496,14 +518,40 @@ function doPost(e) {
       triggerBackgroundSync();
     });
 
+    run(byId("generateOnlineOwnerPassword"), () => {
+      if (!ownerConnection?.canBootstrap) return;
+      const field = byId("onlineOwnerPassword");
+      field.value ||= createPassword();
+      byId("onlineOwnerPasswordRow").hidden = false;
+    });
+
+    run(byId("activateOnlineOwner"), async () => {
+      const connection = ownerConnection;
+      if (!connection?.canBootstrap || connection.endpoint !== shopLink()) throw Error("Save the owner key for this shop link first.");
+      const idField = byId("onlineOwnerId");
+      const id = idField.value.trim().toLowerCase();
+      if (!staffId.test(id)) throw Error("Use 3–32 lowercase letters, numbers, dots, dashes or underscores.");
+      const password = byId("onlineOwnerPassword").value;
+      if (!password) throw Error("Generate and save your online Owner password first.");
+      const previousUid = sessionStorage.getItem("tc_logged_uid");
+      idField.readOnly = true;
+      try {
+        await request(connection.endpoint, "owner.bootstrap", { ownerKey: connection.key, id, password });
+        if (!isOwner() || sessionStorage.getItem("tc_logged_uid") !== previousUid) return;
+        startOnlineOwner(connection.endpoint, id, password);
+        openSession({ uid: "cloud-owner:" + id, username: id, role: "Owner" });
+        result.textContent = "Online Owner activated. Sync starts automatically.";
+      } finally {
+        idField.readOnly = false;
+      }
+    });
+
     run(byId("createCloudStaff"), async () => {
       const id = byId("cloudStaffId").value.trim().toLowerCase();
       const endpoint = shopLink();
       if (!staffId.test(id)) throw Error("Use 3–32 lowercase letters, numbers, dots, dashes or underscores.");
       if (pendingStaff?.id !== id || pendingStaff.endpoint !== endpoint) {
-        const bytes = crypto.getRandomValues(new Uint8Array(18));
-        const password = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_");
-        pendingStaff = { id, endpoint, password };
+        pendingStaff = { id, endpoint, password: createPassword() };
       }
       const { password } = pendingStaff;
       passwordField.value = "";

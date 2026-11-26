@@ -794,6 +794,18 @@
           <label for="cloudOwnerKey">Owner key</label>
           <input type="password" id="cloudOwnerKey" autocomplete="off" />
           <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
+          <section id="onlineOwnerActivation" hidden>
+            <p>Set up your online Owner login once to sync automatically after each sign-in.</p>
+            <label for="onlineOwnerId">Online Owner ID</label>
+            <input id="onlineOwnerId" type="text" autocomplete="off" />
+            <button type="button" class="btn btn-outline" id="generateOnlineOwnerPassword">Generate Owner password</button>
+            <div id="onlineOwnerPasswordRow" hidden>
+              <label for="onlineOwnerPassword">Online Owner password</label>
+              <input id="onlineOwnerPassword" readonly autocomplete="off" />
+              <p>Save this password privately first. This login replaces the setup key for online access.</p>
+              <button type="button" class="btn btn-primary" id="activateOnlineOwner">Activate Owner &amp; Sync</button>
+            </div>
+          </section>
           </div>
           <label for="cloudStaffId">Online staff ID</label>
           <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
