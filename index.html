@@ -529,6 +529,18 @@
           <span class="card-title">📋 Attendance Register (Owner & Manager View)</span>
           <span style="font-size:11px;color:var(--muted);" id="attendanceCountBadge">0 entries</span>
         </div>
+        <form class="attendance-export" onsubmit="event.preventDefault(); exportAttendanceExcel();">
+          <div class="field-group">
+            <label for="attendanceExportFrom">From date</label>
+            <input type="date" id="attendanceExportFrom" required />
+          </div>
+          <div class="field-group">
+            <label for="attendanceExportTo">To date (optional)</label>
+            <input type="date" id="attendanceExportTo" />
+          </div>
+          <button type="submit" class="btn btn-green">Export attendance (.xlsx)</button>
+          <small>Leave To date blank for one day.</small>
+        </form>
         <div class="table-wrap">
           <table>
             <thead>
@@ -2232,6 +2244,52 @@
       return rows;
     }
 
+    function exportAttendanceExcel() {
+      if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().hasAttendanceAccess) {
+        return showToast("Attendance export is restricted.");
+      }
+      const from = document.getElementById("attendanceExportFrom").value;
+      const to = document.getElementById("attendanceExportTo").value || from;
+      if (!from || to < from) return showToast("Choose a valid attendance date range.");
+
+      const shifts = attendance.map(shift => {
+        const stamp = new Date(Number(shift.inTimestamp));
+        const savedDate = parseAnyDateToISO(shift.date);
+        const parsed = new Date(savedDate + "T00:00:00Z");
+        const validSavedDate = Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === savedDate;
+        const date = validSavedDate ? savedDate
+          : Number(shift.inTimestamp) > 0 && Number.isFinite(stamp.getTime())
+            ? parseAnyDateToISO(getTodayDDMMYYYY(stamp)) : "";
+        return { shift, date };
+      }).filter(row => row.date && row.date >= from && row.date <= to)
+        .sort((a, b) => a.date.localeCompare(b.date) || (Number(a.shift.inTimestamp) || 0) - (Number(b.shift.inTimestamp) || 0));
+      if (!shifts.length) return showToast("No attendance found for the selected dates.");
+
+      const weekdays = new Intl.DateTimeFormat("en-IN", { weekday: "long", timeZone: "UTC" });
+      const summary = new Map();
+      const detailRows = [["Date", "Day", "Employee", "Punch in (IST)", "Punch out (IST)", "Duration", "Status", "Device"]];
+      for (const { shift, date } of shifts) {
+        const day = weekdays.format(new Date(date + "T00:00:00Z"));
+        const closed = Boolean(shift.outTimestamp || shift.outTime);
+        const totals = summary.get(date) || { day, shifts: 0, closed: 0 };
+        totals.shifts++;
+        if (closed) totals.closed++;
+        summary.set(date, totals);
+        detailRows.push([date, day, shift.name, shift.inTime, shift.outTime, shift.duration,
+          closed ? "Completed" : "Punched in", shift.device]);
+      }
+      const summaryRows = [["Date", "Day", "Shifts", "Completed", "Still punched in"]];
+      for (const [date, totals] of summary) {
+        summaryRows.push([date, totals.day, totals.shifts, totals.closed, totals.shifts - totals.closed]);
+      }
+      const workbook = generateXlsxBytes([
+        { name: "Day-wise Attendance", rows: summaryRows },
+        { name: "Attendance Details", rows: detailRows }
+      ]);
+      const filename = `RAVI_Attendance_${from === to ? from : from + "_to_" + to}.xlsx`;
+      saveOrShareFile(workbook, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
     function exportFullExcel() {
       const { fBills, fExpenses, fAttendance, fromVal, toVal } = getFilteredRecordsByDate();
       const dayList = buildDayWiseMap(fBills, fExpenses);
@@ -2413,6 +2471,7 @@
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;
     applySettingsToInputs();
     checkSessionLogin();
+    document.getElementById("attendanceExportFrom").value = parseAnyDateToISO(getTodayDDMMYYYY());
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
 
   </script>
