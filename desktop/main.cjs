@@ -1,7 +1,7 @@
 const {app,BrowserWindow,shell}=require('electron');
 const path=require('node:path');
 function createWindow(){
- const win=new BrowserWindow({width:1280,height:850,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
+ const win=new BrowserWindow({width:1280,height:850,icon:path.join(__dirname,'icon.png'),webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
  win.webContents.setWindowOpenHandler(({url})=>{if(url.startsWith('https://'))shell.openExternal(url);return {action:'deny'};});
  win.webContents.on('will-navigate',(event,url)=>{if(url!==win.webContents.getURL()){event.preventDefault();if(url.startsWith('https://'))shell.openExternal(url);}});
  win.loadFile(path.join(__dirname,'index.html'));
