@@ -44,7 +44,7 @@ jobs:
           app="$(find dist -maxdepth 2 -type d -name 'TakenCafe.app' -print -quit)"
           test -n "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/TakenCafe"
+          lipo "$app/Contents/MacOS/TakenCafe" -verify_arch x86_64 arm64
           for image in dist/*.dmg; do hdiutil verify "$image"; done
       - uses: actions/upload-artifact@v5
         with:
