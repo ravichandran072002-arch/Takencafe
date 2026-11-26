@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RAVI" />
-  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
-  <link rel="apple-touch-icon" href="./icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.json" />
   <title>RAVI POS</title>
   <style>
@@ -81,6 +81,7 @@
     .login-box {
       background: var(--card); color: var(--text);
       width: 100%; max-width: 370px; border-radius: 18px;
+      max-height: 100%; overflow-y: auto;
       padding: 22px 18px; box-shadow: 0 12px 32px rgba(0,0,0,0.45);
       border: 1px solid var(--border);
     }
@@ -375,7 +376,7 @@
 </head>
 <body>
   <div class="login-screen" id="appLoginScreen">
-    <div class="login-box">
+    <form class="login-box" id="appLoginForm" onsubmit="event.preventDefault()">
       <div style="text-align:center;margin-bottom:14px;">
         <div class="r-monogram-lg">R</div>
         <strong style="font-size:19px;display:block;letter-spacing:0.6px;" id="loginAppTitle">RAVI</strong>
@@ -384,22 +385,33 @@
 
       <div class="field-group">
         <label>Login ID</label>
-        <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('loginPassInput').focus()" />
+        <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
       </div>
       <div class="field-group">
         <label>Password</label>
-        <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" onkeydown="if(event.key==='Enter') handleAppLogin()" />
+        <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" />
       </div>
       <div class="field-group">
         <label>Staff Name (For Morning In-Time - Optional)</label>
-        <input type="text" id="loginStaffNameInput" placeholder="e.g. Karthik, Priya" onkeydown="if(event.key==='Enter') handleAppLogin()" />
+        <input type="text" id="loginStaffNameInput" placeholder="e.g. Karthik, Priya" />
       </div>
 
-      <button class="btn btn-primary" style="margin-top:6px;font-size:14px;padding:11px;" onclick="handleAppLogin()">🔓 Login to RAVI</button>
-      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint">
+      <section id="ownerPasswordChange" hidden>
+        <p>Choose a new owner password with at least 8 characters.</p>
+        <div class="field-group">
+          <label for="ownerNewPassword">New password</label>
+          <input id="ownerNewPassword" type="password" autocomplete="new-password" />
+        </div>
+        <div class="field-group">
+          <label for="ownerConfirmPassword">Confirm new password</label>
+          <input id="ownerConfirmPassword" type="password" autocomplete="new-password" />
+        </div>
+      </section>
+      <button class="btn btn-primary" id="appLoginButton" type="submit" disabled style="margin-top:6px;font-size:14px;padding:11px;">Login to RAVI</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
         Works Offline & Syncs with Google Drive / Sheet
       </div>
-    </div>
+    </form>
   </div>
 
   <header>
@@ -1409,7 +1421,11 @@
     }
 
     function checkSessionLogin() {
-      const isLogged = sessionStorage.getItem("tc_session_logged") === "1";
+      const uid = sessionStorage.getItem("tc_logged_uid");
+      const account = authUsers.find(u => u.uid === uid);
+      const isLogged = sessionStorage.getItem("tc_session_logged") === "1"
+        && account && !account.mustChange && account.password !== "2002";
+      if (!isLogged) sessionStorage.removeItem("tc_session_logged");
       const screen = document.getElementById("appLoginScreen");
       if (isLogged) {
         screen.classList.add("hidden");
@@ -1419,51 +1435,6 @@
         document.getElementById("loginShopSub").textContent = settings.name ? `${settings.name} • Sign in` : "Sign in to setup your Kadai";
         document.getElementById("loginUserIdInput").value = "";
         screen.classList.remove("hidden");
-      }
-    }
-
-    async function handleAppLogin() {
-      const enteredId = document.getElementById("loginUserIdInput").value.trim().toLowerCase();
-      const enteredPass = document.getElementById("loginPassInput").value.trim();
-      const staffName = document.getElementById("loginStaffNameInput").value.trim();
-      if (!enteredId || !enteredPass) return showToast("Login ID & Password podunga!");
-
-      if (settings.gdriveUrl && navigator.onLine) {
-        document.getElementById("loginSyncHint").textContent = "Checking cloud accounts...";
-        try {
-          const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
-          const res = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 7000);
-          if (res.ok) {
-            const remote = await res.json();
-            if (remote && !remote.empty) mergeTwoWayData(remote);
-          }
-        } catch (e) {}
-      }
-
-      const matchedUser = authUsers.find(
-        u => String(u.username).trim().toLowerCase() === enteredId && String(u.password) === enteredPass
-      );
-
-      if (matchedUser) {
-        const isOwnerOrMgr = matchedUser.role === "Owner" || matchedUser.role === "Admin" || matchedUser.role === "Manager";
-        sessionStorage.setItem("tc_session_logged", "1");
-        sessionStorage.setItem("tc_logged_uid", matchedUser.uid);
-        sessionStorage.setItem("tc_logged_username", matchedUser.username);
-        sessionStorage.setItem("tc_logged_role", matchedUser.role);
-        sessionStorage.setItem("tc_logged_att_access", (isOwnerOrMgr || matchedUser.canViewAttendance) ? "1" : "0");
-        document.getElementById("appLoginScreen").classList.add("hidden");
-        document.getElementById("loginPassInput").value = "";
-        applyRolePermissionsUI();
-        if (staffName) {
-          document.getElementById("staffNameInput").value = staffName;
-          punchInStaff();
-        } else {
-          showToast(`✅ Welcome ${matchedUser.username} (${matchedUser.role})`);
-        }
-        if (settings.gdriveUrl) triggerBackgroundSync();
-      } else {
-        document.getElementById("loginSyncHint").textContent = "Works Offline & Syncs with Google Drive / Sheet";
-        showToast("❌ Invalid Login ID or Password!");
       }
     }
 
@@ -2243,7 +2214,7 @@
       try {
         const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
         const getRes = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 10000);
-        if (getRes.ok) { const remoteData = await getRes.json(); if (remoteData && !remoteData.empty) mergeTwoWayData(remoteData); }
+        if (getRes.ok) { const remoteData = await getRes.json(); if (remoteData && !remoteData.empty) await mergeTwoWayData(remoteData); }
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
@@ -2251,11 +2222,10 @@
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
         const postRes = await fetchWithTimeout(settings.gdriveUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }, 12000);
-        if (postRes.ok) {
-          document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
-          document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
-          if (notify) showToast("Windows & Android Synced ✓");
-        }
+        if (!postRes.ok || (await postRes.json()).ok !== true) throw Error("Cloud backup rejected");
+        document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
+        document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
+        if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
         document.getElementById("syncStatusBadge").textContent = "☁️ Offline";
         if (notify) showToast("Offline / slow network — saved locally!");
@@ -2347,7 +2317,6 @@
     applySettingsToInputs();
     checkSessionLogin();
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
-    if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
 
   </script>
   <script src="./ravi-fixes.js"></script>
