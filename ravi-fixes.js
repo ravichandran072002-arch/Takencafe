@@ -49,6 +49,7 @@
     if (stored.startsWith("pbkdf2$")) {
       const pieces = stored.split("$"); if (pieces.length !== 4) return false;
       const iterations=Number(pieces[1]); if (!Number.isInteger(iterations)||iterations<100000||iterations>1000000) return false;
+      if (!/^[A-Za-z0-9+/]{22}==$/.test(pieces[2]) || !/^[A-Za-z0-9+/]{43}=$/.test(pieces[3])) return false;
       const salt=unb64(pieces[2]), expected=unb64(pieces[3]);
       const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
       const real=new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",salt,hash:"SHA-256",iterations},key,256));
@@ -58,6 +59,19 @@
     if (/^[a-f0-9]{64}$/.test(stored)) {
       const bytes=await crypto.subtle.digest("SHA-256",enc.encode("ravi|"+uid+"|"+password));
       return Array.from(new Uint8Array(bytes)).map(x=>x.toString(16).padStart(2,"0")).join("")===stored;
+    }
+    if (/^f[a-f0-9]{1,14}$/.test(stored)) {
+      // Read the fallback format from older RAVI builds. Successful login upgrades it.
+      const input = "ravi|" + uid + "|" + password;
+      let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (let i = 0; i < input.length; i++) {
+        const code = input.charCodeAt(i);
+        h1 = Math.imul(h1 ^ code, 2654435761);
+        h2 = Math.imul(h2 ^ code, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return stored === "f" + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
     }
     return false;
   }
@@ -69,49 +83,124 @@
     return task;
   }
   async function migrateUsersImpl() {
-    let changed = false;
-    for (const u of authUsers) {
-      if (u.password !== undefined) {
-        u.passHash = await hashPw(String(u.password));
-        if (String(u.password) === "2002") u.mustChange = true;
-        delete u.password; u.updatedAt = Date.now(); changed = true;
+    while (authUsers.some(user => user.password !== undefined)) {
+      const accounts = authUsers;
+      const upgraded = [];
+      for (const user of accounts) {
+        if (user.password === undefined) {
+          upgraded.push(user);
+          continue;
+        }
+        const { password, ...account } = user;
+        account.passHash = await hashPw(String(password));
+        if (String(password) === "2002") account.mustChange = true;
+        upgraded.push(account);
       }
+      if (accounts !== authUsers) continue;
+      if (!safeStorageSet("tc_auth_users", upgraded)) throw Error("Account storage unavailable");
+      authUsers = upgraded;
     }
-    if (changed) { safeStorageSet("tc_auth_users", authUsers); if (sessionStorage.getItem("tc_session_logged") === "1") triggerBackgroundSync(); }
-    return changed;
   }
 
-  async function forcePassChange(u) {
-    const np = prompt("Default password must be changed.\nEnter a new password (min 8 chars, not 2002):");
-    if (np && np.trim().length >= 8 && np.trim() !== "2002" && np.trim() === prompt("Confirm new password:")) {
-      u.passHash = await hashPw(np.trim()); u.mustChange = false; u.updatedAt = Date.now();
-      safeStorageSet("tc_auth_users", authUsers); triggerBackgroundSync(); showToast("✅ Password changed"); return true;
-    } else { showToast("⚠️ Change the default password to continue"); return false; }
-  }
+  const loginForm = $r("appLoginForm");
+  const loginButton = $r("appLoginButton");
+  const passwordChange = $r("ownerPasswordChange");
+  const loginHint = $r("loginSyncHint");
+  const loginMessage = loginHint.textContent.trim();
 
-  window.handleAppLogin = async function () {
+  function clearPasswordChange() {
+    passwordChange.hidden = true;
+    $r("ownerNewPassword").value = "";
+    $r("ownerConfirmPassword").value = "";
+    loginButton.textContent = "Login to RAVI";
+  }
+  ["loginUserIdInput", "loginPassInput"].forEach(id => {
+    $r(id).addEventListener("input", clearPasswordChange);
+  });
+
+  async function handleAppLogin() {
     const id = $r("loginUserIdInput").value.trim().toLowerCase();
     const pw = $r("loginPassInput").value.trim();
     const staff = cl($r("loginStaffNameInput").value.trim());
-    if (!id || !pw) return showToast("Login ID & Password podunga!");
-    if (settings.gdriveUrl && navigator.onLine) {
-      $r("loginSyncHint").textContent = "Checking cloud accounts...";
+    if (!id || !pw) return showToast("Enter your login ID and password.");
+    loginHint.textContent = loginMessage;
+    if ($r("loginMode").value === "staff") {
       try {
-        const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
-        const res = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 7000);
-        if (res.ok) { const remote = await res.json(); if (remote && !remote.empty) mergeTwoWayData(remote); }
-      } catch (e) {}
+        const endpoint = RaviCloud.staffShopLink();
+        const result = await RaviCloud.staff(endpoint, id, pw);
+        if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
+            || $r("loginPassInput").value.trim() !== pw || RaviCloud.staffShopLink() !== endpoint) return;
+        if (result.role === "primary" || result.role === "co-owner") {
+          clearCart();
+          RaviCloud.startOnlineOwner(endpoint, id, pw);
+          openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
+        } else {
+          RaviCloud.startStaffSession(endpoint, id, pw);
+          openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
+        }
+      } catch (error) {
+        loginHint.textContent = error.message;
+      }
+      return;
     }
-    try { await migrateUsers(); } catch (e) { return showToast("Secure login unavailable. Update Android System WebView."); }
-    let u = null;
-    for (const x of authUsers) {
-      if (String(x.username).trim().toLowerCase() === id && x.passHash && await verifyPw(pw, x.passHash, x.uid)) { u = x; break; }
+    await migrateUsers();
+    let u;
+    let verifiedHash;
+    for (const account of authUsers) {
+      if (String(account.username).trim().toLowerCase() !== id) continue;
+      const hash = account.passHash;
+      if (await verifyPw(pw, hash, account.uid)) {
+        u = account;
+        verifiedHash = hash;
+        break;
+      }
     }
     if (!u) {
-      $r("loginSyncHint").textContent = "Works Offline & Syncs with Google Drive / Sheet";
-      return showToast("❌ Invalid Login ID or Password!");
+      clearPasswordChange();
+      loginHint.textContent = "Invalid login ID or password.";
+      return;
     }
-    if (u.mustChange && !(await forcePassChange(u))) return;
+    const mustChange = u.mustChange || (u.role === "Owner" && pw === "2002");
+    let nextHash;
+    if (mustChange) {
+      if (passwordChange.hidden) {
+        passwordChange.hidden = false;
+        loginButton.textContent = "Save password and sign in";
+        loginHint.textContent = "Change the default password before signing in.";
+        $r("ownerNewPassword").focus();
+        return;
+      }
+      const nextPassword = $r("ownerNewPassword").value.trim();
+      if (nextPassword.length < 8 || nextPassword !== $r("ownerConfirmPassword").value.trim()) {
+        loginHint.textContent = "Use at least 8 characters and enter the same password twice.";
+        return;
+      }
+      nextHash = await hashPw(nextPassword);
+    } else if (!verifiedHash.startsWith("pbkdf2$")) {
+      nextHash = await hashPw(pw);
+    }
+    if (!authUsers.includes(u) || u.passHash !== verifiedHash
+        || $r("loginUserIdInput").value.trim().toLowerCase() !== id || $r("loginPassInput").value.trim() !== pw) {
+      clearPasswordChange();
+      loginHint.textContent = "The account changed. Please sign in again.";
+      return;
+    }
+    if (nextHash) {
+      const updated = { ...u, passHash: nextHash, mustChange: false };
+      if (mustChange) updated.updatedAt = Math.max(Date.now(), (u.updatedAt || 0) + 1);
+      const accounts = authUsers.map(account => account === u ? updated : account);
+      if (!safeStorageSet("tc_auth_users", accounts)) {
+        loginHint.textContent = "Could not save the password. Free device storage and try again.";
+        return;
+      }
+      authUsers = accounts;
+      u = updated;
+    }
+    clearPasswordChange();
+    openSession(u, staff);
+  }
+
+  function openSession(u, staff) {
     const priv = u.role === "Owner" || u.role === "Admin" || u.role === "Manager";
     sessionStorage.setItem("tc_session_logged", "1");
     sessionStorage.setItem("tc_logged_uid", u.uid);
@@ -123,8 +212,23 @@
     applyRolePermissionsUI();
     if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
     else showToast(`✅ Welcome ${u.username} (${u.role})`);
-    if (settings.gdriveUrl) triggerBackgroundSync();
-  };
+    RaviCloud.refreshOwnerPanel();
+    if (u.role === "Owner" && settings.gdriveUrl) triggerBackgroundSync();
+  }
+  loginForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (loginButton.disabled) return;
+    loginButton.disabled = true;
+    try {
+      await handleAppLogin();
+    } catch (error) {
+      console.error("Login failed", error);
+      loginHint.textContent = "Sign-in is unavailable. Check device storage and update Android System WebView.";
+    } finally {
+      loginButton.disabled = false;
+    }
+  });
+  loginButton.disabled = false;
 
   window.addNewLoginUser = async function () {
     if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan Login ID create panna mudiyum!");
@@ -140,7 +244,7 @@
     safeStorageSet("tc_auth_users", authUsers);
     $r("newLoginId").value = ""; $r("newLoginPass").value = "";
     renderLoginUsersTable(); triggerBackgroundSync();
-    showToast(`✅ ${role} ID "${username}" created locally; sync pending`);
+    showToast(`✅ ${role} ID "${username}" created on this device`);
   };
 
   window.resetUserPass = async function (uid) {
@@ -252,38 +356,7 @@
     ["name", "phone", "address", "upi", "gstin"].forEach(k => { if (!settings[k] && prev[k]) settings[k] = prev[k]; });
     safeStorageSet("tc_settings", settings);
     sanitizeAll(); saveAll();
-    migrateUsers().then(() => { if (activeTabName === "settings") renderLoginUsersTable(); });
-  };
-
-  /* ---------- 7. Sync secret for the Apps Script endpoint ---------- */
-  const getTok = () => localStorage.getItem("tc_sync_token") || "";
-  const realFetch = window.fetch.bind(window);
-  window.fetch = function (url, opt) {
-    opt = opt || {};
-    try {
-      const base = settings.gdriveUrl, tok = getTok();
-      if (tok && base && typeof url === "string" && (url === base || url.startsWith(base + "?"))) {
-        if (!opt.method || opt.method === "GET") url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(tok);
-        else if (typeof opt.body === "string") { const o = JSON.parse(opt.body); o.token = tok; opt = { ...opt, body: JSON.stringify(o) }; }
-      }
-    } catch (e) {}
-    return realFetch(url, opt);
-  };
-  function setSyncSecret() {
-    if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!");
-    const t = prompt("Sync secret (same value as SECRET in your Apps Script). Leave empty to clear:");
-    if (t === null) return;
-    if (t.trim()) localStorage.setItem("tc_sync_token", t.trim()); else localStorage.removeItem("tc_sync_token");
-    showToast("🔐 Sync secret saved"); triggerBackgroundSync();
-  }
-  const SECURE_SCRIPT = APPS_SCRIPT_TEMPLATE
-    .replace("function doGet(e) {",
-      'const SECRET = "CHANGE_ME_TO_A_LONG_RANDOM_STRING";\n\nfunction doGet(e) {\n  if (!e.parameter || e.parameter.token !== SECRET) return ContentService.createTextOutput(JSON.stringify({ empty: true })).setMimeType(ContentService.MimeType.JSON);')
-    .replace("const body = JSON.parse(e.postData.contents);",
-      'const body = JSON.parse(e.postData.contents);\n  if (body.token !== SECRET) return ContentService.createTextOutput(JSON.stringify({ ok: false, error: "unauthorized" })).setMimeType(ContentService.MimeType.JSON);\n  delete body.token;');
-  window.copyAppsScript = function () {
-    if (navigator.clipboard) navigator.clipboard.writeText(SECURE_SCRIPT);
-    showToast("Secured Google Drive Script copied! Set your SECRET in it.");
+    return migrateUsers().then(() => { if (activeTabName === "settings") renderLoginUsersTable(); });
   };
 
   /* ---------- 6. Extra role guards (UI-level; real enforcement needs a server) ---------- */
@@ -298,14 +371,25 @@
     if (!host || $r("raviSecRow")) return;
     const d = document.createElement("div");
     d.id = "raviSecRow"; d.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;";
-    d.innerHTML = '<button class="mini-btn" id="raviPinBtn">🔑 Delete PIN</button><button class="mini-btn" id="raviTokBtn">🔐 Sync Secret</button>';
+    d.innerHTML = '<button class="mini-btn" id="raviPinBtn">🔑 Delete PIN</button>';
     host.appendChild(d);
-    $r("raviPinBtn").onclick = changePin; $r("raviTokBtn").onclick = setSyncSecret;
+    $r("raviPinBtn").onclick = changePin;
   }
   sanitizeAll(); saveAll();
   migrateUsers().then(() => { renderLoginUsersTable(); renderCategories(); renderMenu(); }).catch(e => console.error('Login initialization failed', e));
   injectButtons();
   const origApply = window.applySettingsToInputs;
   window.applySettingsToInputs = function () { origApply(); injectButtons(); };
-  $r("appsScriptDisplay").textContent = SECURE_SCRIPT;
+  const sync = window.syncNowBothWays;
+  window.syncNowBothWays = async function (notify) {
+    try {
+      await migrateUsers();
+      return await sync(notify);
+    } catch (error) {
+      console.error("Could not prepare accounts for cloud backup", error);
+      if (notify) showToast("Cloud backup paused. Account storage is unavailable.");
+    }
+  };
+  if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
+  RaviCloud.init(openSession);
 })();

@@ -17,12 +17,15 @@
       "manifest.json",
       "ui.css",
       "ravi-fixes.js",
+      "ravi-cloud.js",
       "sw.js",
       "icon.png",
       "icons/**/*"
     ],
     "mac": {
       "target": "dmg",
+      "identity": "-",
+      "hardenedRuntime": false,
       "icon": "icon.png",
       "category": "public.app-category.business"
     },

@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RAVI" />
-  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
-  <link rel="apple-touch-icon" href="./icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.json" />
   <title>RAVI POS</title>
   <style>
@@ -81,6 +81,7 @@
     .login-box {
       background: var(--card); color: var(--text);
       width: 100%; max-width: 370px; border-radius: 18px;
+      max-height: 100%; overflow-y: auto;
       padding: 22px 18px; box-shadow: 0 12px 32px rgba(0,0,0,0.45);
       border: 1px solid var(--border);
     }
@@ -375,7 +376,7 @@
 </head>
 <body>
   <div class="login-screen" id="appLoginScreen">
-    <div class="login-box">
+    <form class="login-box" id="appLoginForm" onsubmit="event.preventDefault()">
       <div style="text-align:center;margin-bottom:14px;">
         <div class="r-monogram-lg">R</div>
         <strong style="font-size:19px;display:block;letter-spacing:0.6px;" id="loginAppTitle">RAVI</strong>
@@ -383,23 +384,41 @@
       </div>
 
       <div class="field-group">
+        <label for="loginMode">Sign-in type</label>
+        <select id="loginMode">
+          <option value="local">Owner / this device</option>
+          <option value="staff">Staff / online</option>
+        </select>
+      </div>
+      <div class="field-group">
         <label>Login ID</label>
-        <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('loginPassInput').focus()" />
+        <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
       </div>
       <div class="field-group">
         <label>Password</label>
-        <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" onkeydown="if(event.key==='Enter') handleAppLogin()" />
+        <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" />
       </div>
-      <div class="field-group">
-        <label>Staff Name (For Morning In-Time - Optional)</label>
-        <input type="text" id="loginStaffNameInput" placeholder="e.g. Karthik, Priya" onkeydown="if(event.key==='Enter') handleAppLogin()" />
+      <div class="field-group" id="localLoginStaffName">
+        <label for="loginStaffNameInput">Staff Name (For Morning In-Time - Optional)</label>
+        <input type="text" id="loginStaffNameInput" placeholder="e.g. Karthik, Priya" />
       </div>
 
-      <button class="btn btn-primary" style="margin-top:6px;font-size:14px;padding:11px;" onclick="handleAppLogin()">🔓 Login to RAVI</button>
-      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint">
-        Works Offline & Syncs with Google Drive / Sheet
+      <section id="ownerPasswordChange" hidden>
+        <p>Choose a new owner password with at least 8 characters.</p>
+        <div class="field-group">
+          <label for="ownerNewPassword">New password</label>
+          <input id="ownerNewPassword" type="password" autocomplete="new-password" />
+        </div>
+        <div class="field-group">
+          <label for="ownerConfirmPassword">Confirm new password</label>
+          <input id="ownerConfirmPassword" type="password" autocomplete="new-password" />
+        </div>
+      </section>
+      <button class="btn btn-primary" id="appLoginButton" type="submit" disabled style="margin-top:6px;font-size:14px;padding:11px;">Login to RAVI</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
+        Owner sign-in works offline. Online staff sign-in needs internet.
       </div>
-    </div>
+    </form>
   </div>
 
   <header>
@@ -423,6 +442,7 @@
     <button id="nav-summary" onclick="switchTab('summary', this)">Bills & Excel</button>
     <button id="nav-expenses" onclick="switchTab('expenses', this)">Expenses</button>
     <button id="nav-menu" onclick="switchTab('menu', this)">Menu Edit</button>
+    <button id="cloudStaffLogout" hidden onclick="logoutApp()">Lock / Logout</button>
     <button id="nav-settings" onclick="switchTab('settings', this)">Settings</button>
   </div>
 
@@ -731,7 +751,7 @@
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" style="margin-bottom:12px;" onclick="addNewLoginUser()">+ Create Login ID & Sync</button>
+        <button class="btn btn-primary" style="margin-bottom:12px;" onclick="addNewLoginUser()">+ Create Local Login ID</button>
 
         <div class="table-wrap">
           <table>
@@ -749,33 +769,83 @@
         </div>
       </div>
 
-      <div class="card" style="border:1px solid var(--blue);">
-        <span class="card-title" style="color:var(--blue);">☁️ Google Drive / Google Sheet Sync & Printer</span>
-        <p style="font-size:12px;color:var(--muted);margin:5px 0 8px;">
-          Connect your <b>Google Apps Script Web App URL</b> to auto-sync Bills, Cash/UPI Totals, Menu, Staff Attendance & Expenses to Google Drive & Live Google Sheet.
-        </p>
-
-        <input type="text" id="gdriveUrlInput" placeholder="Paste Google Drive Web App URL (https://script.google.com/macros/s/.../exec)" style="margin-bottom:8px;" />
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <button class="btn btn-blue" onclick="saveGDriveConfig()">🔗 Connect & Sync</button>
-          <button class="btn btn-dark" onclick="syncNowBothWays(true)">🔄 Sync Now</button>
+      <div class="card cloud-settings-card">
+        <div class="cloud-settings-heading">
+          <div>
+            <h2>Google Drive &amp; Sheets sync</h2>
+            <p id="gdriveSyncLog" role="status">Sign in as Owner to sync.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="syncCloudNow" onclick="syncNowBothWays(true)">Sync now</button>
         </div>
-        <div id="gdriveSyncLog" style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:10px;">Status: Ready.</div>
+        <p id="cloudSetupResult" class="cloud-feedback" role="status"></p>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <select id="paperSizeSelect" onchange="savePrinterPrefs()">
-            <option value="80mm">80mm Thermal Paper</option>
-            <option value="58mm">58mm Thermal Paper</option>
-          </select>
-          <button class="btn btn-outline" onclick="connectBluetoothPrinter()">📶 Pair BT Printer</button>
-        </div>
-        <div id="btPrinterStatus" style="font-size:11px;color:var(--muted);margin-bottom:8px;">Printer Status: Ready</div>
+        <details id="cloudOwnerSetup" class="cloud-disclosure" hidden>
+          <summary>One-time Owner setup</summary>
+          <div class="cloud-settings-fields">
+            <label for="gdriveUrlInput">Shop web app URL</label>
+            <input type="url" id="gdriveUrlInput" autocomplete="off" />
+            <label for="cloudOwnerKey">Owner key</label>
+            <input type="password" id="cloudOwnerKey" autocomplete="off" />
+            <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
 
-        <details style="margin-top:10px;background:var(--bg);padding:8px;border-radius:8px;border:1px solid var(--border);">
-          <summary style="font-weight:700;font-size:12px;cursor:pointer;">📖 Google Apps Script Code (Auto-Updates Google Sheet)</summary>
-          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;margin-top:8px;" onclick="copyAppsScript()">📋 Copy Script</button>
-          <div class="code-box" id="appsScriptDisplay"></div>
+            <section id="onlineOwnerActivation" class="cloud-settings-fields cloud-activation" hidden>
+              <h3>Enable automatic Owner sync</h3>
+              <label for="onlineOwnerId">Online Owner ID</label>
+              <input id="onlineOwnerId" type="text" autocomplete="off" />
+              <button type="button" class="btn btn-outline" id="generateOnlineOwnerPassword">Generate Owner password</button>
+              <div id="onlineOwnerPasswordRow" class="cloud-settings-fields" hidden>
+                <label for="onlineOwnerPassword">Online Owner password</label>
+                <input id="onlineOwnerPassword" readonly autocomplete="off" />
+                <p>Save this password privately first. This login replaces the setup key for online access.</p>
+                <button type="button" class="btn btn-primary" id="activateOnlineOwner">Activate Owner &amp; Sync</button>
+              </div>
+            </section>
+
+            <details class="cloud-disclosure">
+              <summary>Google Apps Script installation</summary>
+              <div class="cloud-settings-fields">
+                <button type="button" class="btn btn-outline" onclick="copyAppsScript()">Copy Script</button>
+                <div class="code-box" id="appsScriptDisplay"></div>
+                <button type="button" class="btn btn-outline" id="generateCloudKeys">Generate setup keys</button>
+                <label for="generatedOwnerKey">RAVI_OWNER_KEY</label>
+                <input readonly id="generatedOwnerKey" />
+                <label for="generatedStaffPepper">RAVI_STAFF_PEPPER</label>
+                <input readonly id="generatedStaffPepper" />
+              </div>
+            </details>
+          </div>
         </details>
+      </div>
+
+      <div class="card cloud-settings-card" id="cloudStaffPanel" hidden>
+        <h2>Staff &amp; Owner access</h2>
+        <div class="cloud-settings-fields">
+          <label for="cloudStaffId">Online Staff ID</label>
+          <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
+          <div class="cloud-settings-actions">
+            <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
+            <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
+          </div>
+          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
+          <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
+          <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
+          <ul id="cloudStaffList"></ul>
+        </div>
+      </div>
+
+      <div class="card cloud-settings-card">
+        <h2>Receipt printer</h2>
+        <div class="cloud-settings-fields">
+          <label for="paperSizeSelect">Paper size</label>
+          <div class="cloud-settings-actions">
+            <select id="paperSizeSelect" onchange="savePrinterPrefs()">
+              <option value="80mm">80mm Thermal Paper</option>
+              <option value="58mm">58mm Thermal Paper</option>
+            </select>
+            <button type="button" class="btn btn-outline" onclick="connectBluetoothPrinter()">Pair Bluetooth printer</button>
+          </div>
+          <p id="btPrinterStatus" role="status">Printer status: Ready</p>
+        </div>
       </div>
 
       <div class="card">
@@ -1124,7 +1194,7 @@
       '  sh.clearContents();',
       '  if (!rows || !rows.length) return;',
       '  const maxCols = Math.max(...rows.map(r => r.length));',
-      '  const cleanRows = rows.map(r => { const c = r.slice(); while (c.length < maxCols) c.push(""); return c; });',
+      '  const cleanRows = rows.map(r => { const c = r.map(v => typeof v === "string" && /^[=+@-]/.test(v) ? "\u0027" + v : v); while (c.length < maxCols) c.push(""); return c; });',
       '  sh.getRange(1, 1, cleanRows.length, maxCols).setValues(cleanRows);',
       '  sh.setFrozenRows(1);',
       '}',
@@ -1163,26 +1233,26 @@
       '  if (defSh && ss.getSheets().length > 1) ss.deleteSheet(defSh);',
       '}',
       '',
-      'function doGet(e) {',
+      'function readBackup() {',
       '  const folder = getOrCreateFolder();',
       '  const files = folder.getFilesByName(LIVE_FILE);',
       '  let data = { empty: true };',
       '  if (files.hasNext()) { const c = files.next().getBlob().getDataAsString(); if (c) data = JSON.parse(c); }',
-      '  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);',
+      '  delete data.authUsers;',
+      '  delete data.deletedUserIds;',
+      '  return data;',
       '}',
       '',
-      'function doPost(e) {',
+      'function writeBackup(body, archive) {',
       '  const folder = getOrCreateFolder();',
-      '  const body = JSON.parse(e.postData.contents);',
       '  const jsonStr = JSON.stringify(body, null, 2);',
       '  const liveFiles = folder.getFilesByName(LIVE_FILE);',
       '  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);',
-      '  if (body.backupFileName) {',
+      '  if (archive && body.backupFileName) {',
       '    const bFiles = folder.getFilesByName(body.backupFileName);',
       '    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);',
       '  }',
       '  updateLiveSheetFromBody(folder, body);',
-      '  return ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON);',
       '}'
     ].join("\n");
 
@@ -1302,13 +1372,12 @@
     }
     let authUsers = initAuthUsers();
 
-    // Do not connect fresh installations to a shared/public backup endpoint.
-    // Existing installations must explicitly configure their own Apps Script URL.
-    const OLD_SHARED_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
-    if (settings.gdriveUrl === OLD_SHARED_GDRIVE_URL) settings.gdriveUrl = "";
+    // The shop endpoint is public. Each request still needs the appropriate credentials.
+    const DEFAULT_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwtywyunJvq9ugqCCGQ4V7YD2QvzrvrEqTpV-BlDunZ5ZJjDu6LtiGmXlcaTCG2P8b3aw/exec";
+    const OLD_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
     if (!settings.gdriveUrl) {
       const previousUrl = localStorage.getItem("tc_gdrive_url") || "";
-      settings.gdriveUrl = previousUrl === OLD_SHARED_GDRIVE_URL ? "" : previousUrl;
+      settings.gdriveUrl = previousUrl;
       safeStorageSet("tc_settings", settings);
     }
 
@@ -1324,6 +1393,12 @@
     function getLoggedAccount() {
       const uid = sessionStorage.getItem("tc_logged_uid");
       const uname = sessionStorage.getItem("tc_logged_username");
+      if (uid?.startsWith("cloud-owner:")) {
+        return { username: uid.slice("cloud-owner:".length), role: "Owner", isOwnerOrMgr: true, hasAttendanceAccess: true };
+      }
+      if (uid?.startsWith("cloud-staff:")) {
+        return { username: uid.slice("cloud-staff:".length), role: "Staff", isOwnerOrMgr: false, hasAttendanceAccess: false };
+      }
       let user = authUsers.find(u => u.uid === uid) || authUsers.find(u => u.username.toLowerCase() === String(uname || "").toLowerCase());
       if (!user) {
         user = {
@@ -1340,14 +1415,23 @@
       };
     }
 
+    function isCloudStaff() {
+      return sessionStorage.getItem("tc_session_logged") === "1"
+        && sessionStorage.getItem("tc_logged_uid")?.startsWith("cloud-staff:");
+    }
+
     function applyRolePermissionsUI() {
+      const cloudStaff = isCloudStaff();
+      for (const tab of ["summary", "expenses", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
+      document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
+      if (cloudStaff && !["pos", "staff"].includes(activeTabName)) switchTab("pos", document.getElementById("nav-pos"));
       const acc = getLoggedAccount();
       const badgeText = document.getElementById("currentUserBadgeText");
       if (badgeText) {
         badgeText.innerHTML = `Logged in as <b>${acc.username}</b> • Role: <b>${acc.role}</b>`;
       }
       const userCard = document.getElementById("userAccessControlCard");
-      if (userCard) userCard.style.display = acc.isOwnerOrMgr ? "block" : "none";
+      if (userCard) userCard.style.display = acc.isOwnerOrMgr && !sessionStorage.getItem("tc_logged_uid")?.startsWith("cloud-owner:") ? "block" : "none";
 
       const regCard = document.getElementById("attendanceRegisterCard");
       const restCard = document.getElementById("attendanceRestrictedCard");
@@ -1376,6 +1460,10 @@
     const debouncedRenderMenuManager = debounce(() => renderMenuManager(), 130);
 
     function triggerBackgroundSync() {
+      if (typeof RaviCloud !== "undefined" && RaviCloud.staffActive()) {
+        setTimeout(RaviCloud.syncStaff, 180);
+        return;
+      }
       if (!settings.gdriveUrl) return;
       if (isSyncing) { syncQueued = true; return; }
       setTimeout(() => syncNowBothWays(false), 180);
@@ -1409,7 +1497,11 @@
     }
 
     function checkSessionLogin() {
-      const isLogged = sessionStorage.getItem("tc_session_logged") === "1";
+      const uid = sessionStorage.getItem("tc_logged_uid");
+      const account = authUsers.find(u => u.uid === uid);
+      const isLogged = sessionStorage.getItem("tc_session_logged") === "1"
+        && account && !account.mustChange && account.password !== "2002";
+      if (!isLogged) sessionStorage.removeItem("tc_session_logged");
       const screen = document.getElementById("appLoginScreen");
       if (isLogged) {
         screen.classList.add("hidden");
@@ -1422,51 +1514,6 @@
       }
     }
 
-    async function handleAppLogin() {
-      const enteredId = document.getElementById("loginUserIdInput").value.trim().toLowerCase();
-      const enteredPass = document.getElementById("loginPassInput").value.trim();
-      const staffName = document.getElementById("loginStaffNameInput").value.trim();
-      if (!enteredId || !enteredPass) return showToast("Login ID & Password podunga!");
-
-      if (settings.gdriveUrl && navigator.onLine) {
-        document.getElementById("loginSyncHint").textContent = "Checking cloud accounts...";
-        try {
-          const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
-          const res = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 7000);
-          if (res.ok) {
-            const remote = await res.json();
-            if (remote && !remote.empty) mergeTwoWayData(remote);
-          }
-        } catch (e) {}
-      }
-
-      const matchedUser = authUsers.find(
-        u => String(u.username).trim().toLowerCase() === enteredId && String(u.password) === enteredPass
-      );
-
-      if (matchedUser) {
-        const isOwnerOrMgr = matchedUser.role === "Owner" || matchedUser.role === "Admin" || matchedUser.role === "Manager";
-        sessionStorage.setItem("tc_session_logged", "1");
-        sessionStorage.setItem("tc_logged_uid", matchedUser.uid);
-        sessionStorage.setItem("tc_logged_username", matchedUser.username);
-        sessionStorage.setItem("tc_logged_role", matchedUser.role);
-        sessionStorage.setItem("tc_logged_att_access", (isOwnerOrMgr || matchedUser.canViewAttendance) ? "1" : "0");
-        document.getElementById("appLoginScreen").classList.add("hidden");
-        document.getElementById("loginPassInput").value = "";
-        applyRolePermissionsUI();
-        if (staffName) {
-          document.getElementById("staffNameInput").value = staffName;
-          punchInStaff();
-        } else {
-          showToast(`✅ Welcome ${matchedUser.username} (${matchedUser.role})`);
-        }
-        if (settings.gdriveUrl) triggerBackgroundSync();
-      } else {
-        document.getElementById("loginSyncHint").textContent = "Works Offline & Syncs with Google Drive / Sheet";
-        showToast("❌ Invalid Login ID or Password!");
-      }
-    }
-
     function logoutApp() {
       sessionStorage.removeItem("tc_session_logged");
       sessionStorage.removeItem("tc_logged_uid");
@@ -1474,6 +1521,7 @@
       sessionStorage.removeItem("tc_logged_role");
       sessionStorage.removeItem("tc_logged_att_access");
       checkSessionLogin();
+      applyRolePermissionsUI();
       showToast("🔒 RAVI Locked");
     }
 
@@ -1575,7 +1623,7 @@
       document.getElementById("setAddress").value = settings.address || "";
       document.getElementById("setUpi").value = settings.upi || "";
       document.getElementById("setGstin").value = settings.gstin || "";
-      document.getElementById("gdriveUrlInput").value = settings.gdriveUrl || "";
+      document.getElementById("gdriveUrlInput").value = settings.gdriveUrl || DEFAULT_RAVI_ENDPOINT;
       document.getElementById("paperSizeSelect").value = settings.paperSize || "80mm";
       applyThemeUI();
       applyRolePermissionsUI();
@@ -1600,7 +1648,7 @@
       if (!activeShiftUid) return null;
       const shift = attendance.find(a => a.uid === activeShiftUid && !a.outTimestamp);
       if (!shift) { activeShiftUid = ""; localStorage.removeItem("tc_active_shift_uid"); return null; }
-      return shift;
+      return typeof RaviCloud === "undefined" || RaviCloud.ownsRecord(shift) ? shift : null;
     }
 
     function updateStaffUIState() {
@@ -1640,7 +1688,7 @@
     function closeStaffLoginModal() { document.getElementById("staffLoginModal").classList.remove("open"); }
 
     function punchInStaff() {
-      const name = document.getElementById("staffNameInput").value.trim();
+      const name = isCloudStaff() ? getLoggedAccount().username : document.getElementById("staffNameInput").value.trim();
       if (!name) return showToast("Employee name enter pannunga!");
       const prevShift = getCurrentActiveShift();
       if (prevShift) {
@@ -1652,6 +1700,7 @@
       }
       const now = Date.now();
       const record = { uid: now + "-" + Math.floor(Math.random() * 10000), name, date: getTodayDDMMYYYY(new Date(now)), inTime: getNowTimeIST(new Date(now)), inTimestamp: now, outTime: "", outTimestamp: 0, duration: "", device: DEVICE_LABEL, updatedAt: now };
+      RaviCloud.tagRecord(record);
       attendance.unshift(record);
       activeShiftUid = record.uid;
       safeStorageSet("tc_attendance", attendance);
@@ -1670,7 +1719,7 @@
 
     function punchOutByUid(uid) {
       const record = attendance.find(a => a.uid === uid);
-      if (!record || record.outTimestamp) return;
+      if (!record || record.outTimestamp || !RaviCloud.ownsRecord(record)) return;
       const now = Date.now();
       record.outTimestamp = now;
       record.outTime = getNowTimeIST(new Date(now));
@@ -1727,6 +1776,7 @@
     }
 
     function switchTab(tab, btn) {
+      if (isCloudStaff() && !["pos", "staff"].includes(tab)) return;
       activeTabName = tab;
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       document.querySelectorAll(".nav-tabs button").forEach(b => b.classList.remove("active"));
@@ -1864,7 +1914,12 @@
         items: cart.map(c => ({ id: c.id, name: c.name, cat: c.cat, price: c.price, qty: c.qty })),
         sub: itemsSub, packing, discount, gst, total: grand
       };
-      bills.unshift(bill); safeStorageSet("tc_bills", bills);
+      RaviCloud.tagRecord(bill);
+      bills.unshift(bill);
+      if (!safeStorageSet("tc_bills", bills)) {
+        bills.shift();
+        return;
+      }
       lastBill = bill; clearCart();
       document.getElementById("custNameDesk").value = ""; document.getElementById("custNameMob").value = "";
       triggerBackgroundSync();
@@ -2229,36 +2284,48 @@
       saveOrShareFile(xlsxBytes, `RAVI_Items_${parseAnyDateToISO(getTodayDDMMYYYY())}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
-    async function saveGDriveConfig() {
-      const url = document.getElementById("gdriveUrlInput").value.trim();
-      settings.gdriveUrl = url; safeStorageSet("tc_settings", settings);
-      if (!url) { document.getElementById("syncStatusBadge").textContent = "☁️ Local"; return showToast("Google Drive URL cleared"); }
-      await syncNowBothWays(true);
+    function showOwnerSyncStatus(state, message) {
+      const status = document.getElementById("gdriveSyncLog");
+      status.dataset.state = state;
+      status.textContent = message;
+      document.getElementById("syncCloudNow").disabled = state === "syncing";
     }
 
     async function syncNowBothWays(notify) {
-      if (!settings.gdriveUrl) { if (notify) showToast("Paste Google Drive Web App URL in Settings tab"); return; }
+      if (RaviCloud.staffActive()) return RaviCloud.syncStaff();
+      if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
+      if (!RaviCloud.ownerConnected()) {
+        showOwnerSyncStatus("setup", "Open One-time Owner setup and save the owner key.");
+        if (notify) document.getElementById("cloudOwnerSetup").open = true;
+        return;
+      }
       if (isSyncing) { syncQueued = true; return; }
-      isSyncing = true; document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
+      isSyncing = true;
+      showOwnerSyncStatus("syncing", "Syncing with Google Drive and Sheets…");
+      document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
-        const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
-        const getRes = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 10000);
-        if (getRes.ok) { const remoteData = await getRes.json(); if (remoteData && !remoteData.empty) mergeTwoWayData(remoteData); }
+        if (RaviCloud.isOnlineOwner()) await RaviCloud.syncStaff();
+        const backup = await RaviCloud.owner(settings.gdriveUrl, "backup.read");
+        if (backup.data && !backup.data.empty) await mergeTwoWayData(backup.data);
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
-          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds, deletedUserIds, bills, expenses, attendance, authUsers,
+          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds,
+          bills: bills.filter(row => !row.cloud),
+          expenses,
+          attendance: attendance.filter(row => !row.cloud),
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
-        const postRes = await fetchWithTimeout(settings.gdriveUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }, 12000);
-        if (postRes.ok) {
-          document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
-          document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
-          if (notify) showToast("Windows & Android Synced ✓");
-        }
+        const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
+        if (saved.data) await mergeTwoWayData(saved.data);
+        document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
+        showOwnerSyncStatus("synced", `Synced at ${getNowTimeIST()}. Google Sheet updated.`);
+        if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
-        document.getElementById("syncStatusBadge").textContent = "☁️ Offline";
-        if (notify) showToast("Offline / slow network — saved locally!");
+        document.getElementById("syncStatusBadge").textContent = "☁️ Pending";
+        const message = err.revoked ? err.message : "Sync pending. Your changes are saved on this device.";
+        showOwnerSyncStatus("pending", message);
+        if (notify || err.revoked) showToast(message);
       } finally {
         isSyncing = false;
         if (syncQueued) { syncQueued = false; setTimeout(() => syncNowBothWays(false), 350); }
@@ -2284,7 +2351,7 @@
       if (Array.isArray(remote.deletedMenuIds)) { remote.deletedMenuIds.forEach(id => { if (!deletedMenuIds.includes(id)) deletedMenuIds.push(id); }); safeStorageSet("tc_deleted_menu_ids", deletedMenuIds); }
       if (Array.isArray(remote.deletedBillIds)) { remote.deletedBillIds.forEach(uid => { if (!deletedBillIds.includes(uid)) deletedBillIds.push(uid); }); safeStorageSet("tc_deleted_bill_ids", deletedBillIds); }
       if (Array.isArray(remote.deletedExpenseIds)) { remote.deletedExpenseIds.forEach(uid => { if (!deletedExpenseIds.includes(uid)) deletedExpenseIds.push(uid); }); safeStorageSet("tc_deleted_expense_ids", deletedExpenseIds); }
-      if (Array.isArray(remote.menu) && remote.menu.length) {
+      if (Array.isArray(remote.menu)) {
         const map = new Map();
         menu.forEach(m => { if (!deletedMenuIds.includes(m.id)) map.set(m.id, m); });
         remote.menu.forEach(rm => { if (deletedMenuIds.includes(rm.id)) return; const localItem = map.get(rm.id); if (!localItem || (rm.updatedAt || 0) > (localItem.updatedAt || 0)) map.set(rm.id, rm); });
@@ -2339,17 +2406,17 @@
       });
     }
 
-    setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl && navigator.onLine && !document.hidden) syncNowBothWays(false); }, 25000);
-    document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && settings.gdriveUrl && navigator.onLine) syncNowBothWays(false); });
+    setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && navigator.onLine && !document.hidden) triggerBackgroundSync(); }, 25000);
+    document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && navigator.onLine) triggerBackgroundSync(); });
 
     // Use the uploaded RAVI visual identity instead of runtime-generated icons.
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;
     applySettingsToInputs();
     checkSessionLogin();
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
-    if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
 
   </script>
+  <script src="./ravi-cloud.js"></script>
   <script src="./ravi-fixes.js"></script>
 </body>
 </html>
