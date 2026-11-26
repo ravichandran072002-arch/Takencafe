@@ -1,0 +1,38 @@
+{
+  "name": "takencafe",
+  "version": "1.0.0",
+  "description": "TakenCafe POS",
+  "main": "main.cjs",
+  "author": "TakenCafe",
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.takencafe.pos",
+    "productName": "TakenCafe",
+    "files": [
+      "main.cjs",
+      "index.html",
+      "manifest.json",
+      "ui.css",
+      "ravi-fixes.js",
+      "sw.js",
+      "icon.png",
+      "icons/**/*"
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.png",
+      "category": "public.app-category.business"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

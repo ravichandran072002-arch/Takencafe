@@ -1,0 +1,45 @@
+name: Build desktop installers
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, build/desktop-installers, fix/ravi-branding-security-desktop]
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win --x64
+            artifact: TakenCafe-Windows
+          - os: macos-15
+            args: --mac --arm64
+            artifact: TakenCafe-macOS
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Copy web app and branding into desktop bundle
+        run: |
+          node -e "const fs=require('fs');for(const f of ['index.html','manifest.json','ui.css','ravi-fixes.js','sw.js','icon.png'])fs.copyFileSync(f,'desktop/'+f);fs.cpSync('icons','desktop/icons',{recursive:true})"
+      - name: Check JS syntax and packaged resources
+        run: |
+          node --check desktop/main.cjs
+          node --check desktop/ravi-fixes.js
+          node --check desktop/sw.js
+          node -e "const fs=require('fs');const html=fs.readFileSync('desktop/index.html','utf8');const scripts=[...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/gi)];if(!scripts.length)throw Error('Missing app script');for(const s of scripts)new Function(s[1]);for(const f of ['manifest.json','ui.css','ravi-fixes.js','sw.js','icons/icon-512.png'])if(!fs.existsSync('desktop/'+f))throw Error('Missing '+f);JSON.parse(fs.readFileSync('desktop/manifest.json','utf8'));"
+      - run: npm install
+        working-directory: desktop
+      - run: npx electron-builder ${{ matrix.args }} --publish never
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+          if-no-files-found: error

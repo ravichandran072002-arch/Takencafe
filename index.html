@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RAVI" />
-  <link id="dynamicFavicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231e110a'/%3E%3Crect x='6' y='6' width='88' height='88' rx='18' fill='none' stroke='%23f59e0b' stroke-width='4'/%3E%3Ctext x='50' y='71' font-family='Arial,Helvetica,sans-serif' font-size='64' font-weight='900' fill='%23fde68a' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E" />
-  <link id="dynamicAppleIcon" rel="apple-touch-icon" href="" />
-  <link id="dynamicManifest" rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.png" />
+  <link rel="manifest" href="./manifest.json" />
   <title>RAVI POS</title>
   <style>
     :root {
@@ -371,6 +371,7 @@
       .no-print { display: none !important; }
     }
   </style>
+  <link rel="stylesheet" href="./ui.css" />
 </head>
 <body>
   <div class="login-screen" id="appLoginScreen">
@@ -953,7 +954,7 @@
   <div id="toast" class="toast"></div>
 
   <script>
-    const ADMIN_DELETE_PIN = "2002";
+    const ADMIN_DELETE_PIN = null; // Legacy PIN fallback disabled; owner configures a secure PIN.
     let pendingDeleteTarget = null;
     let activeTabName = "pos";
     let revealedUserIds = new Set();
@@ -1301,9 +1302,13 @@
     }
     let authUsers = initAuthUsers();
 
-    const DEFAULT_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
+    // Do not connect fresh installations to a shared/public backup endpoint.
+    // Existing installations must explicitly configure their own Apps Script URL.
+    const OLD_SHARED_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
+    if (settings.gdriveUrl === OLD_SHARED_GDRIVE_URL) settings.gdriveUrl = "";
     if (!settings.gdriveUrl) {
-      settings.gdriveUrl = localStorage.getItem("tc_gdrive_url") || DEFAULT_GDRIVE_URL;
+      const previousUrl = localStorage.getItem("tc_gdrive_url") || "";
+      settings.gdriveUrl = previousUrl === OLD_SHARED_GDRIVE_URL ? "" : previousUrl;
       safeStorageSet("tc_settings", settings);
     }
 
@@ -2337,7 +2342,7 @@
     setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl && navigator.onLine && !document.hidden) syncNowBothWays(false); }, 25000);
     document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && settings.gdriveUrl && navigator.onLine) syncNowBothWays(false); });
 
-    setupDynamicRAppIcon();
+    // Use the uploaded RAVI visual identity instead of runtime-generated icons.
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;
     applySettingsToInputs();
     checkSessionLogin();
@@ -2345,5 +2350,6 @@
     if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl) syncNowBothWays(false);
 
   </script>
+  <script src="./ravi-fixes.js"></script>
 </body>
 </html>
