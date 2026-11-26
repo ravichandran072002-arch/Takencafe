@@ -182,7 +182,6 @@ function doPost(e) {
     const probe = await fetchWithTimeout(endpoint + "?raviProtocol=1", { cache: "no-store" }, 8000);
     const info = await probe.json().catch(() => null);
     if (!probe.ok || info?.protocol !== protocol) {
-      if (action === "staff.login") byId("staffShopSetup").open = true;
       throw Error("The owner must deploy the updated RAVI Apps Script for this link.");
     }
     const response = await fetchWithTimeout(endpoint, {
@@ -239,7 +238,6 @@ function doPost(e) {
 
   function startStaffSession(endpoint, id, password) {
     staffConnection = { endpoint, id, password };
-    rememberStaffShop(endpoint);
     safeStorageSet("tc_login_mode", "staff");
     localMenu = menu;
     clearCart();
@@ -306,10 +304,9 @@ function doPost(e) {
     }
   }
 
-  function rememberStaffShop(endpoint) {
-    safeStorageSet("tc_staff_shop", endpoint);
-    byId("staffEndpoint").value = endpoint;
-    byId("staffShopSetup").open = false;
+  function staffShopLink() {
+    return [safeStorageGet("tc_staff_shop", ""), settings.gdriveUrl, DEFAULT_RAVI_ENDPOINT]
+      .find(url => typeof url === "string" && url !== OLD_RAVI_ENDPOINT && validEndpoint.test(url)) || "";
   }
 
   function init() {
@@ -319,17 +316,10 @@ function doPost(e) {
     const shopField = byId("gdriveUrlInput");
     let pendingStaff;
     const mode = byId("loginMode");
-    const endpointField = byId("staffEndpoint");
-    const shopSetup = byId("staffShopSetup");
-    endpointField.value = [safeStorageGet("tc_staff_shop", ""), settings.gdriveUrl, DEFAULT_RAVI_ENDPOINT]
-      .find(url => typeof url === "string" && url !== OLD_RAVI_ENDPOINT && validEndpoint.test(url)) || "";
     mode.value = safeStorageGet("tc_login_mode", DEFAULT_RAVI_ENDPOINT ? "staff" : "local") === "staff" ? "staff" : "local";
 
     function updateLoginMode() {
-      const onlineStaff = mode.value === "staff";
-      shopSetup.hidden = !onlineStaff;
-      shopSetup.open = onlineStaff && !endpointField.value;
-      byId("localLoginStaffName").hidden = onlineStaff;
+      byId("localLoginStaffName").hidden = mode.value === "staff";
     }
 
     mode.addEventListener("change", () => {
@@ -418,7 +408,7 @@ function doPost(e) {
       keyField.value = "";
       shopField.value = endpoint;
       settings.gdriveUrl = endpoint;
-      rememberStaffShop(endpoint);
+      safeStorageSet("tc_staff_shop", endpoint);
       safeStorageSet("tc_settings", settings);
       result.textContent = "Owner key saved for this session.";
       triggerBackgroundSync();
@@ -460,5 +450,5 @@ function doPost(e) {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, refreshOwnerPanel, startStaffSession, staffActive, ownsRecord, tagRecord, syncStaff };
+  return { init, owner, staff, staffShopLink, refreshOwnerPanel, startStaffSession, staffActive, ownsRecord, tagRecord, syncStaff };
 })();
