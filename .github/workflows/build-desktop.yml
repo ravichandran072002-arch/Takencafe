@@ -12,7 +12,7 @@ jobs:
           - os: windows-latest
             args: --win --x64
             artifact: TakenCafe-Windows
-          - os: macos-15
+          - os: macos-15-intel
             args: --mac --arm64
             artifact: TakenCafe-macOS
     runs-on: ${{ matrix.os }}
