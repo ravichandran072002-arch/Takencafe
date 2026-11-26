@@ -1,15 +1,18 @@
 /* Google Apps Script transport and owner controls. */
 const RaviCloud = (() => {
   "use strict";
-  const protocol = "ravi-cloud-v1";
+  const protocol = "ravi-cloud-v2";
   const byId = id => document.getElementById(id);
   const staffId = /^[a-z0-9][a-z0-9._-]{2,31}$/;
   const ownerKeyFormat = /^[a-f0-9]{64}$/;
   let ownerConnection;
   let staffExpiry;
+  let staffConnection;
+  let syncingStaff = false;
+  let localMenu;
 
   const server = String.raw`
-const RAVI_PROTOCOL = "ravi-cloud-v1";
+const RAVI_PROTOCOL = "ravi-cloud-v2";
 
 function raviReply(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
@@ -30,6 +33,78 @@ function raviStaffDigest(secret, id, password) {
   return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(id + ":" + password, secret));
 }
 
+function raviMergeBackup(saved, incoming) {
+  const merged = { ...saved, ...incoming };
+  delete merged.authUsers;
+  delete merged.deletedUserIds;
+  delete merged.empty;
+  for (const [field, tombstones, identify] of [
+    ["menu", "deletedMenuIds", row => row.id],
+    ["bills", "deletedBillIds", row => row.uid || row.billNo],
+    ["expenses", "deletedExpenseIds", row => row.uid || (row.date + row.note + row.amount)],
+    ["attendance", null, row => row.uid]
+  ]) {
+    const deleted = new Set(tombstones ? [...(saved[tombstones] || []), ...(incoming[tombstones] || [])].map(String) : []);
+    if (tombstones) merged[tombstones] = [...deleted].map(id => field === "menu" && /^\d+$/.test(id) ? Number(id) : id);
+    if (!(field in saved) && !(field in incoming)) continue;
+    const rows = new Map();
+    for (const row of [...(saved[field] || []), ...(incoming[field] || [])]) {
+      const id = String(identify(row));
+      if (deleted.has(id)) continue;
+      const existing = rows.get(id);
+      if (!existing || (row.updatedAt || 0) > (existing.updatedAt || 0)) rows.set(id, row);
+    }
+    merged[field] = [...rows.values()];
+  }
+  if ((saved.settings?.updatedAt || 0) > (incoming.settings?.updatedAt || 0)) merged.settings = saved.settings;
+  return merged;
+}
+
+function raviStaffRows(rows, id, kind) {
+  if (!Array.isArray(rows) || rows.length > 25) throw Error("Invalid batch");
+  const text = (value, max = 120) => String(value ?? "").slice(0, max);
+  const number = (value, max = 100000000) => {
+    if (!Number.isFinite(value) || value < 0 || value > max) throw Error("Invalid amount");
+    return value;
+  };
+  const date = value => number(value, 9007199254740991);
+  return rows.map(row => {
+    if (typeof row.uid !== "string" || !/^s:[a-z0-9._-]+:[a-f0-9-]{36}$/.test(row.uid) || !row.uid.startsWith("s:" + id + ":")) throw Error("Invalid record ID");
+    const base = { uid: row.uid, date: text(row.date, 16), device: text(row.device, 32), updatedAt: date(row.updatedAt || 0) };
+    if (kind === "attendance") return {
+      ...base, name: id, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),
+      inTime: text(row.inTime, 20), outTime: text(row.outTime, 20), duration: text(row.duration, 32)
+    };
+    if (!Array.isArray(row.items) || !row.items.length || row.items.length > 200) throw Error("Invalid bill items");
+    return {
+      ...base, timestamp: date(row.timestamp), billNo: text(row.billNo, 48), staff: id,
+      type: text(row.type, 32), mode: text(row.mode, 32), customer: text(row.customer),
+      items: row.items.map(item => ({ id: text(item.id, 48), name: text(item.name), cat: text(item.cat), price: number(item.price), qty: number(item.qty, 100000) })),
+      sub: number(row.sub), packing: number(row.packing), discount: number(row.discount), gst: number(row.gst), total: number(row.total)
+    };
+  });
+}
+
+function raviStaffSync(req, props, pepper) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
+  try {
+    const stored = props.getProperty("staff:" + req.id);
+    if (!stored || !raviEqual(raviStaffDigest(pepper, req.id, req.password), stored)) {
+      return raviReply({ ok: false, reason: "revoked" });
+    }
+    const bills = raviStaffRows(req.bills, req.id, "bills");
+    const attendance = raviStaffRows(req.attendance, req.id, "attendance");
+    const current = readBackup();
+    if (bills.length || attendance.length) {
+      writeBackup(raviMergeBackup(current, { bills, attendance }), false);
+    }
+    return raviReply({ ok: true, menu: current.menu });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function doPost(e) {
   const bad = { ok: false };
   const props = PropertiesService.getScriptProperties();
@@ -40,8 +115,9 @@ function doPost(e) {
     if (!req || req.protocol !== RAVI_PROTOCOL || !/^[a-f0-9]{64}$/.test(ownerKey || "")
         || !/^[a-f0-9]{64}$/.test(staffPepper || "") || ownerKey === staffPepper) return raviReply(bad);
 
-    if (req.action === "staff.login") {
+    if (req.action === "staff.login" || req.action === "staff.sync") {
       if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return raviReply(bad);
+      if (req.action === "staff.sync") return raviStaffSync(req, props, staffPepper);
       const stored = props.getProperty("staff:" + req.id);
       const digest = raviStaffDigest(staffPepper, req.id, req.password);
       if (!stored || !raviEqual(digest, stored)) return raviReply(bad);
@@ -64,8 +140,9 @@ function doPost(e) {
         delete data.authUsers;
         delete data.deletedUserIds;
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
-        writeBackup(data);
-        return raviReply({ ok: true });
+        const merged = raviMergeBackup(readBackup(), data);
+        writeBackup(merged, true);
+        return raviReply({ ok: true, data: merged });
       }
 
       if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "")) return raviReply(bad);
@@ -113,6 +190,11 @@ function doPost(e) {
     const result = await response.json();
     if (!response.ok || result?.ok !== true) {
       if (result?.reason === "exists") throw Error("That Staff ID already exists. Revoke it before replacing the password.");
+      if (result?.reason === "revoked") {
+        const error = Error("Staff access ended. Sign in again.");
+        error.revoked = true;
+        throw error;
+      }
       if (result?.reason === "busy") throw Error("The shop server is busy. Please try again.");
       throw Error(action === "staff.login" ? "Invalid Staff ID or password." : "Owner access was rejected. Check your owner key.");
     }
@@ -152,9 +234,70 @@ function doPost(e) {
     }
   }
 
-  function startStaffSession() {
+  function startStaffSession(endpoint, id, password) {
+    staffConnection = { endpoint, id, password };
+    localMenu = menu;
     clearTimeout(staffExpiry);
     staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
+    syncStaff();
+  }
+
+  function staffActive() {
+    return Boolean(staffConnection);
+  }
+
+  function ownsRecord(record) {
+    return !staffConnection || (record.cloud?.id === staffConnection.id && record.cloud.endpoint === staffConnection.endpoint);
+  }
+
+  function tagRecord(record) {
+    if (staffConnection) {
+      record.uid = "s:" + staffConnection.id + ":" + crypto.randomUUID();
+      record.cloud = { endpoint: staffConnection.endpoint, id: staffConnection.id, uploadedAt: -1 };
+    }
+  }
+
+  async function syncStaff() {
+    const connection = staffConnection;
+    if (!connection || syncingStaff || !navigator.onLine) return;
+    syncingStaff = true;
+    const badge = byId("syncStatusBadge");
+    try {
+      const batch = records => records.filter(record => record.cloud && ownsRecord(record)
+        && record.cloud.uploadedAt !== (record.updatedAt || 0)).slice(0, 25);
+      const billBatch = batch(bills);
+      const attendanceBatch = batch(attendance);
+      const snapshots = [...billBatch, ...attendanceBatch].map(row => [row, row.updatedAt || 0]);
+      const outgoing = records => records.map(({ cloud, ...row }) => row);
+      const remote = await request(connection.endpoint, "staff.sync", {
+        id: connection.id, password: connection.password, bills: outgoing(billBatch), attendance: outgoing(attendanceBatch)
+      });
+      if (staffConnection !== connection) return;
+      for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
+      safeStorageSet("tc_bills", bills);
+      safeStorageSet("tc_attendance", attendance);
+      if (Array.isArray(remote.menu)) {
+        const clean = value => String(value ?? "").replace(/[<>&"'`\\]/g, "");
+        menu = remote.menu.filter(row => Number.isFinite(Number(row.id))).map(row => ({
+          id: Number(row.id), name: clean(row.name), cat: clean(row.cat), price: Number(row.price) || 0
+        }));
+        renderCategories();
+        renderMenu();
+      }
+      if (staffConnection !== connection) return;
+      const pending = batch(bills).length || batch(attendance).length;
+      badge.textContent = pending ? "☁️ Pending" : "☁️ Synced";
+      if (pending) setTimeout(syncStaff, 300);
+    } catch (error) {
+      if (staffConnection !== connection) return;
+      badge.textContent = "☁️ Pending";
+      if (error.revoked) {
+        logoutApp();
+        showToast(error.message);
+      }
+    } finally {
+      syncingStaff = false;
+    }
   }
 
   function init() {
@@ -174,6 +317,14 @@ function doPost(e) {
     const logout = window.logoutApp;
     window.logoutApp = function () {
       clearTimeout(staffExpiry);
+      staffConnection = undefined;
+      if (localMenu) {
+        menu = localMenu;
+        localMenu = undefined;
+        clearCart();
+        renderCategories();
+        renderMenu();
+      }
       pendingStaff = undefined;
       logout();
       refreshOwnerPanel();
@@ -278,8 +429,9 @@ function doPost(e) {
         showToast("Select the script in the panel and copy it.");
       }
     };
+    window.addEventListener("online", triggerBackgroundSync);
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, refreshOwnerPanel, startStaffSession };
+  return { init, owner, staff, refreshOwnerPanel, startStaffSession, staffActive, ownsRecord, tagRecord, syncStaff };
 })();

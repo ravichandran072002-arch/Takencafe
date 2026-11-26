@@ -15,6 +15,12 @@ Use the Google account that owns the Apps Script project behind your shop's curr
 
 1. In the owner app, enter a unique online Staff ID and choose **Create Staff ID and password**. Give the staff member the ID, generated password and shop link privately.
 2. On their phone, they install the updated app, choose **Staff / online**, and enter the shop link, ID and password.
-3. Use **Refresh staff list → Revoke** to prevent future sign-ins with an old password. To replace a password, revoke the ID and create it again. An already-open staff session locks on reload, logout or after eight hours.
+3. Use **Refresh staff list → Revoke** to prevent future sign-ins with an old password. To replace a password, revoke the ID and create it again. An online staff session rechecks access during sync. It also locks on reload, logout or after eight hours.
 
-Online staff sign-in needs internet. Staff can use POS on their own device. The Drive/Sheets backup remains owner-only and staff-device transactions stay on the staff device. Staff passwords are generated randomly and the server stores a keyed digest in Script Properties. Owner and staff credentials are excluded from Drive/Sheets backups.
+## Android and Windows sync
+
+Install matching builds on both devices and deploy the updated Apps Script version before using online sync. Update any older clients first.
+
+- On each owner device, unlock the local Owner account and enter the same shop link and private owner key. The app merges menu, bills, attendance, expenses, deletions and shop details through the shared backup. Printer and theme preferences are device-specific.
+- Staff use the same online Staff ID and password on Android or Windows. Once signed in, they can bill and punch in/out during an outage. New staff bills and attendance wait on the device and upload when it reconnects. If the app restarts before uploading, sign in again with the same ID and shop link. Menu updates flow from the owner to staff. Existing bills created with older app versions do not upload as staff records automatically.
+- Drive/Sheets backup, expenses, reports and menu editing remain owner-only. Staff passwords are generated randomly and the server stores a keyed digest in Script Properties. Account credentials are excluded from Drive/Sheets backups.

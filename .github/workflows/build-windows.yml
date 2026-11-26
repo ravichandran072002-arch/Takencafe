@@ -3,44 +3,29 @@ name: Build TakenCafe Windows App
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
-
-      - name: Setup Electron files
+          node-version: 22
+      - name: Stage shared RAVI app
         run: |
-          npm init -y
-          npm install --save-dev electron @electron/packager
-          node -e "const pkg = require('./package.json'); pkg.main = 'main.js'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
-          @"
-          const { app, BrowserWindow } = require('electron');
-          function createWindow() {
-            const win = new BrowserWindow({
-              width: 1200,
-              height: 800,
-              autoHideMenuBar: true
-            });
-            win.loadFile('index.html');
-          }
-          app.whenReady().then(createWindow);
-          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-          "@ | Out-File -Encoding utf8 main.js
-
-      - name: Package Windows EXE
-        run: npx @electron/packager . TakenCafe --platform=win32 --arch=x64 --out=release --overwrite
-
-      - name: Upload Windows App
-        uses: actions/upload-artifact@v4
+          node -e "const fs=require('fs');for(const f of ['index.html','manifest.json','ui.css','ravi-fixes.js','ravi-cloud.js','sw.js','icon.png'])fs.copyFileSync('../'+f,f);fs.cpSync('../icons','icons',{recursive:true})"
+          node --check main.cjs
+          node --check ravi-fixes.js
+          node --check ravi-cloud.js
+      - run: npm install
+      - run: npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v6
         with:
-          name: TakenCafe-Windows
-          path: release/TakenCafe-win32-x64
+          name: RAVI-POS-Windows
+          path: desktop/dist/*.exe
+          if-no-files-found: error

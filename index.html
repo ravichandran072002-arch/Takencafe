@@ -446,6 +446,7 @@
     <button id="nav-summary" onclick="switchTab('summary', this)">Bills & Excel</button>
     <button id="nav-expenses" onclick="switchTab('expenses', this)">Expenses</button>
     <button id="nav-menu" onclick="switchTab('menu', this)">Menu Edit</button>
+    <button id="cloudStaffLogout" hidden onclick="logoutApp()">Lock / Logout</button>
     <button id="nav-settings" onclick="switchTab('settings', this)">Settings</button>
   </div>
 
@@ -1217,12 +1218,12 @@
       '  return data;',
       '}',
       '',
-      'function writeBackup(body) {',
+      'function writeBackup(body, archive) {',
       '  const folder = getOrCreateFolder();',
       '  const jsonStr = JSON.stringify(body, null, 2);',
       '  const liveFiles = folder.getFilesByName(LIVE_FILE);',
       '  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);',
-      '  if (body.backupFileName) {',
+      '  if (archive && body.backupFileName) {',
       '    const bFiles = folder.getFilesByName(body.backupFileName);',
       '    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);',
       '  }',
@@ -1386,7 +1387,16 @@
       };
     }
 
+    function isCloudStaff() {
+      return sessionStorage.getItem("tc_session_logged") === "1"
+        && sessionStorage.getItem("tc_logged_uid")?.startsWith("cloud-staff:");
+    }
+
     function applyRolePermissionsUI() {
+      const cloudStaff = isCloudStaff();
+      for (const tab of ["summary", "expenses", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
+      document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
+      if (cloudStaff && !["pos", "staff"].includes(activeTabName)) switchTab("pos", document.getElementById("nav-pos"));
       const acc = getLoggedAccount();
       const badgeText = document.getElementById("currentUserBadgeText");
       if (badgeText) {
@@ -1422,6 +1432,10 @@
     const debouncedRenderMenuManager = debounce(() => renderMenuManager(), 130);
 
     function triggerBackgroundSync() {
+      if (typeof RaviCloud !== "undefined" && RaviCloud.staffActive()) {
+        setTimeout(RaviCloud.syncStaff, 180);
+        return;
+      }
       if (!settings.gdriveUrl) return;
       if (isSyncing) { syncQueued = true; return; }
       setTimeout(() => syncNowBothWays(false), 180);
@@ -1479,6 +1493,7 @@
       sessionStorage.removeItem("tc_logged_role");
       sessionStorage.removeItem("tc_logged_att_access");
       checkSessionLogin();
+      applyRolePermissionsUI();
       showToast("🔒 RAVI Locked");
     }
 
@@ -1605,7 +1620,7 @@
       if (!activeShiftUid) return null;
       const shift = attendance.find(a => a.uid === activeShiftUid && !a.outTimestamp);
       if (!shift) { activeShiftUid = ""; localStorage.removeItem("tc_active_shift_uid"); return null; }
-      return shift;
+      return typeof RaviCloud === "undefined" || RaviCloud.ownsRecord(shift) ? shift : null;
     }
 
     function updateStaffUIState() {
@@ -1645,7 +1660,7 @@
     function closeStaffLoginModal() { document.getElementById("staffLoginModal").classList.remove("open"); }
 
     function punchInStaff() {
-      const name = document.getElementById("staffNameInput").value.trim();
+      const name = isCloudStaff() ? getLoggedAccount().username : document.getElementById("staffNameInput").value.trim();
       if (!name) return showToast("Employee name enter pannunga!");
       const prevShift = getCurrentActiveShift();
       if (prevShift) {
@@ -1657,6 +1672,7 @@
       }
       const now = Date.now();
       const record = { uid: now + "-" + Math.floor(Math.random() * 10000), name, date: getTodayDDMMYYYY(new Date(now)), inTime: getNowTimeIST(new Date(now)), inTimestamp: now, outTime: "", outTimestamp: 0, duration: "", device: DEVICE_LABEL, updatedAt: now };
+      RaviCloud.tagRecord(record);
       attendance.unshift(record);
       activeShiftUid = record.uid;
       safeStorageSet("tc_attendance", attendance);
@@ -1675,7 +1691,7 @@
 
     function punchOutByUid(uid) {
       const record = attendance.find(a => a.uid === uid);
-      if (!record || record.outTimestamp) return;
+      if (!record || record.outTimestamp || !RaviCloud.ownsRecord(record)) return;
       const now = Date.now();
       record.outTimestamp = now;
       record.outTime = getNowTimeIST(new Date(now));
@@ -1732,6 +1748,7 @@
     }
 
     function switchTab(tab, btn) {
+      if (isCloudStaff() && !["pos", "staff"].includes(tab)) return;
       activeTabName = tab;
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       document.querySelectorAll(".nav-tabs button").forEach(b => b.classList.remove("active"));
@@ -1869,6 +1886,7 @@
         items: cart.map(c => ({ id: c.id, name: c.name, cat: c.cat, price: c.price, qty: c.qty })),
         sub: itemsSub, packing, discount, gst, total: grand
       };
+      RaviCloud.tagRecord(bill);
       bills.unshift(bill); safeStorageSet("tc_bills", bills);
       lastBill = bill; clearCart();
       document.getElementById("custNameDesk").value = ""; document.getElementById("custNameMob").value = "";
@@ -2243,6 +2261,7 @@
     }
 
     async function syncNowBothWays(notify) {
+      if (RaviCloud.staffActive()) return RaviCloud.syncStaff();
       if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
       if (!settings.gdriveUrl) { if (notify) showToast("Paste Google Drive Web App URL in Settings tab"); return; }
       if (isSyncing) { syncQueued = true; return; }
@@ -2253,10 +2272,14 @@
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
-          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds, bills, expenses, attendance,
+          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds,
+          bills: bills.filter(row => !row.cloud),
+          expenses,
+          attendance: attendance.filter(row => !row.cloud),
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
-        await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
+        const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
+        if (saved.data) await mergeTwoWayData(saved.data);
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
         document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
         if (notify) showToast("Cloud backup synced ✓");
@@ -2343,8 +2366,8 @@
       });
     }
 
-    setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && settings.gdriveUrl && navigator.onLine && !document.hidden) syncNowBothWays(false); }, 25000);
-    document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && settings.gdriveUrl && navigator.onLine) syncNowBothWays(false); });
+    setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && navigator.onLine && !document.hidden) triggerBackgroundSync(); }, 25000);
+    document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && navigator.onLine) triggerBackgroundSync(); });
 
     // Use the uploaded RAVI visual identity instead of runtime-generated icons.
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;

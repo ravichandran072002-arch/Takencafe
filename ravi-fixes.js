@@ -130,8 +130,8 @@
         const result = await RaviCloud.staff(endpoint, id, pw);
         if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
             || $r("loginPassInput").value.trim() !== pw || $r("staffEndpoint").value.trim() !== endpoint) return;
+        RaviCloud.startStaffSession(endpoint, id, pw);
         openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" }, staff);
-        RaviCloud.startStaffSession();
       } catch (error) {
         loginHint.textContent = error.message;
       }
