@@ -40,3 +40,11 @@ Deploy this version of `Code.gs` to the existing web app and update the app on b
 - **Make Co-owner** lets the selected staff account sign in with its current Online Staff ID and password and manage shop data and regular staff. Only the primary owner can assign or remove Co-owner access or transfer ownership.
 - **Transfer ownership to [staff ID]** changes the primary owner immediately. That person signs in under **Staff / online** with their existing ID and password and gets the Owner screen. The previous primary owner's online Owner access ends. If they had an online account, it becomes Staff. The old setup key can no longer authorize online owner requests after transfer.
 - Google Drive and Apps Script stay under the current Google account. The app transfer shares authorized shop access, and existing offline records already on a former owner's device remain on that device.
+
+## 4-digit PIN on a device
+
+The primary Owner, co-owners, and Staff can use a PIN under **Staff / online**. Deploy the latest `Code.gs` first.
+
+1. On the device, select **Password**, enter the existing online ID and password, and check **Set up a PIN on this device**.
+2. Enter and confirm your 4-digit PIN, then sign in. The device remembers its registration. Later, select **4-digit PIN** and enter the same ID and PIN.
+3. On new devices, after five wrong PIN attempts, or after 90 days, use the original account password to register again. PIN sign-in needs internet. The PIN itself is never saved on the device.

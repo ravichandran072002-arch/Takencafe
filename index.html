@@ -394,9 +394,25 @@
         <label>Login ID</label>
         <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
       </div>
+      <div class="field-group" id="onlineLoginMethodRow" hidden>
+        <label for="onlineLoginMethod">Sign in with</label>
+        <select id="onlineLoginMethod">
+          <option value="password">Password</option>
+          <option value="pin">4-digit PIN</option>
+        </select>
+      </div>
       <div class="field-group">
-        <label>Password</label>
-        <input type="password" id="loginPassInput" placeholder="Enter Password" autocomplete="current-password" />
+        <label id="loginPassLabel" for="loginPassInput">Password</label>
+        <input type="password" id="loginPassInput" placeholder="Enter password" autocomplete="current-password" />
+      </div>
+      <div id="pinEnrollment" class="field-group login-pin-enrollment" hidden>
+        <label><input type="checkbox" id="setupPinOnLogin" /> Set up a PIN on this device</label>
+        <div id="newPinFields" hidden>
+          <label for="newLoginPin">New 4-digit PIN</label>
+          <input id="newLoginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
+          <label for="confirmLoginPin">Confirm PIN</label>
+          <input id="confirmLoginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
+        </div>
       </div>
       <div class="field-group" id="localLoginStaffName">
         <label for="loginStaffNameInput">Staff Name (For Morning In-Time - Optional)</label>

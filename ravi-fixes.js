@@ -122,20 +122,32 @@
     const id = $r("loginUserIdInput").value.trim().toLowerCase();
     const pw = $r("loginPassInput").value.trim();
     const staff = cl($r("loginStaffNameInput").value.trim());
-    if (!id || !pw) return showToast("Enter your login ID and password.");
+    if (!id || !pw) return showToast("Enter your Login ID and sign-in code.");
     loginHint.textContent = loginMessage;
     if ($r("loginMode").value === "staff") {
       try {
         const endpoint = RaviCloud.staffShopLink();
-        const result = await RaviCloud.staff(endpoint, id, pw);
-        if ($r("loginMode").value !== "staff" || $r("loginUserIdInput").value.trim().toLowerCase() !== id
-            || $r("loginPassInput").value.trim() !== pw || RaviCloud.staffShopLink() !== endpoint) return;
+        const method = $r("onlineLoginMethod").value;
+        const enroll = method === "password" && $r("setupPinOnLogin").checked;
+        const pin = $r("newLoginPin").value;
+        if (enroll && (!/^\d{4}$/.test(pin) || pin !== $r("confirmLoginPin").value)) {
+          throw Error("Enter the same 4-digit PIN in both fields.");
+        }
+        const result = await RaviCloud.staff(endpoint, id, pw, method);
+        const sameLogin = () => $r("loginMode").value === "staff" && $r("loginUserIdInput").value.trim().toLowerCase() === id
+          && $r("loginPassInput").value.trim() === pw && $r("onlineLoginMethod").value === method && RaviCloud.staffShopLink() === endpoint;
+        if (!sameLogin()) return;
+        if (enroll) await RaviCloud.enrollPin(endpoint, id, pw, pin);
+        if (!sameLogin()) return;
+        $r("newLoginPin").value = "";
+        $r("confirmLoginPin").value = "";
+        $r("setupPinOnLogin").checked = false;
         if (result.role === "primary" || result.role === "co-owner") {
           clearCart();
-          RaviCloud.startOnlineOwner(endpoint, id, pw);
+          RaviCloud.startOnlineOwner(endpoint, id, result.credentials);
           openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
         } else {
-          RaviCloud.startStaffSession(endpoint, id, pw);
+          RaviCloud.startStaffSession(endpoint, id, result.credentials);
           openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
         }
       } catch (error) {
