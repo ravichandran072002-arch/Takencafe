@@ -6,9 +6,10 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 mkdir -p desktop/icons
-for f in index.html manifest.json ui.css ravi-fixes.js sw.js icon.png; do cp "$f" "desktop/$f"; done
+for f in index.html manifest.json ui.css ravi-fixes.js ravi-cloud.js sw.js icon.png; do cp "$f" "desktop/$f"; done
 cp -R icons/. desktop/icons/
 node --check desktop/ravi-fixes.js
+node --check desktop/ravi-cloud.js
 node --check desktop/sw.js
 cd desktop
 npm install

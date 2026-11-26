@@ -20,7 +20,8 @@ jobs:
       - name: Setup Capacitor iOS
         run: |
           mkdir -p www
-          cp index.html manifest.json icon.png www/
+          cp index.html manifest.json icon.png ui.css ravi-fixes.js ravi-cloud.js sw.js www/
+          cp -R icons www/
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/ios@6
           npx cap init "TakenCafe" "com.takencafe.app" --web-dir www

@@ -384,6 +384,17 @@
       </div>
 
       <div class="field-group">
+        <label for="loginMode">Sign-in type</label>
+        <select id="loginMode">
+          <option value="local">Owner / this device</option>
+          <option value="staff">Staff / online</option>
+        </select>
+      </div>
+      <div class="field-group" id="staffEndpointRow" hidden>
+        <label for="staffEndpoint">Shop link</label>
+        <input type="url" id="staffEndpoint" autocomplete="off" />
+      </div>
+      <div class="field-group">
         <label>Login ID</label>
         <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
       </div>
@@ -409,7 +420,7 @@
       </section>
       <button class="btn btn-primary" id="appLoginButton" type="submit" disabled style="margin-top:6px;font-size:14px;padding:11px;">Login to RAVI</button>
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
-        Works Offline & Syncs with Google Drive / Sheet
+        Owner sign-in works offline. Online staff sign-in needs internet.
       </div>
     </form>
   </div>
@@ -743,7 +754,7 @@
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" style="margin-bottom:12px;" onclick="addNewLoginUser()">+ Create Login ID & Sync</button>
+        <button class="btn btn-primary" style="margin-bottom:12px;" onclick="addNewLoginUser()">+ Create Local Login ID</button>
 
         <div class="table-wrap">
           <table>
@@ -771,6 +782,27 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
           <button class="btn btn-blue" onclick="saveGDriveConfig()">🔗 Connect & Sync</button>
           <button class="btn btn-dark" onclick="syncNowBothWays(true)">🔄 Sync Now</button>
+        </div>
+        <div id="cloudStaffPanel" hidden>
+          <p>Owner setup requires the updated Apps Script and its private owner key.</p>
+          <details>
+            <summary>Generate keys for Apps Script setup</summary>
+            <button type="button" class="btn btn-outline" id="generateCloudKeys">Generate setup keys</button>
+            <label for="generatedOwnerKey">RAVI_OWNER_KEY</label>
+            <input readonly id="generatedOwnerKey" />
+            <label for="generatedStaffPepper">RAVI_STAFF_PEPPER</label>
+            <input readonly id="generatedStaffPepper" />
+          </details>
+          <label for="cloudOwnerKey">Owner key</label>
+          <input type="password" id="cloudOwnerKey" autocomplete="off" />
+          <button type="button" class="btn btn-outline" id="saveCloudOwnerKey">Save owner key</button>
+          <label for="cloudStaffId">Online staff ID</label>
+          <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
+          <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
+          <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
+          <p id="cloudStaffResult" role="status"></p>
+          <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
+          <ul id="cloudStaffList"></ul>
         </div>
         <div id="gdriveSyncLog" style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:10px;">Status: Ready.</div>
 
@@ -1136,7 +1168,7 @@
       '  sh.clearContents();',
       '  if (!rows || !rows.length) return;',
       '  const maxCols = Math.max(...rows.map(r => r.length));',
-      '  const cleanRows = rows.map(r => { const c = r.slice(); while (c.length < maxCols) c.push(""); return c; });',
+      '  const cleanRows = rows.map(r => { const c = r.map(v => typeof v === "string" && /^[=+@-]/.test(v) ? "\u0027" + v : v); while (c.length < maxCols) c.push(""); return c; });',
       '  sh.getRange(1, 1, cleanRows.length, maxCols).setValues(cleanRows);',
       '  sh.setFrozenRows(1);',
       '}',
@@ -1175,17 +1207,18 @@
       '  if (defSh && ss.getSheets().length > 1) ss.deleteSheet(defSh);',
       '}',
       '',
-      'function doGet(e) {',
+      'function readBackup() {',
       '  const folder = getOrCreateFolder();',
       '  const files = folder.getFilesByName(LIVE_FILE);',
       '  let data = { empty: true };',
       '  if (files.hasNext()) { const c = files.next().getBlob().getDataAsString(); if (c) data = JSON.parse(c); }',
-      '  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);',
+      '  delete data.authUsers;',
+      '  delete data.deletedUserIds;',
+      '  return data;',
       '}',
       '',
-      'function doPost(e) {',
+      'function writeBackup(body) {',
       '  const folder = getOrCreateFolder();',
-      '  const body = JSON.parse(e.postData.contents);',
       '  const jsonStr = JSON.stringify(body, null, 2);',
       '  const liveFiles = folder.getFilesByName(LIVE_FILE);',
       '  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);',
@@ -1194,7 +1227,6 @@
       '    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);',
       '  }',
       '  updateLiveSheetFromBody(folder, body);',
-      '  return ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON);',
       '}'
     ].join("\n");
 
@@ -1316,11 +1348,10 @@
 
     // Do not connect fresh installations to a shared/public backup endpoint.
     // Existing installations must explicitly configure their own Apps Script URL.
-    const OLD_SHARED_GDRIVE_URL = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
-    if (settings.gdriveUrl === OLD_SHARED_GDRIVE_URL) settings.gdriveUrl = "";
+    const DEFAULT_RAVI_ENDPOINT = "https://script.google.com/macros/s/AKfycbwIZtYvzgwCkAus4xJJA-Ugga01x0KWuBv3GbuO1CpZ4etez8z9h65wGvF9MrUqAd0cMA/exec";
     if (!settings.gdriveUrl) {
       const previousUrl = localStorage.getItem("tc_gdrive_url") || "";
-      settings.gdriveUrl = previousUrl === OLD_SHARED_GDRIVE_URL ? "" : previousUrl;
+      settings.gdriveUrl = previousUrl;
       safeStorageSet("tc_settings", settings);
     }
 
@@ -1336,6 +1367,9 @@
     function getLoggedAccount() {
       const uid = sessionStorage.getItem("tc_logged_uid");
       const uname = sessionStorage.getItem("tc_logged_username");
+      if (uid?.startsWith("cloud-staff:")) {
+        return { username: uid.slice("cloud-staff:".length), role: "Staff", isOwnerOrMgr: false, hasAttendanceAccess: false };
+      }
       let user = authUsers.find(u => u.uid === uid) || authUsers.find(u => u.username.toLowerCase() === String(uname || "").toLowerCase());
       if (!user) {
         user = {
@@ -2201,6 +2235,7 @@
     }
 
     async function saveGDriveConfig() {
+      if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
       const url = document.getElementById("gdriveUrlInput").value.trim();
       settings.gdriveUrl = url; safeStorageSet("tc_settings", settings);
       if (!url) { document.getElementById("syncStatusBadge").textContent = "☁️ Local"; return showToast("Google Drive URL cleared"); }
@@ -2208,21 +2243,20 @@
     }
 
     async function syncNowBothWays(notify) {
+      if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
       if (!settings.gdriveUrl) { if (notify) showToast("Paste Google Drive Web App URL in Settings tab"); return; }
       if (isSyncing) { syncQueued = true; return; }
       isSyncing = true; document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
-        const sep = settings.gdriveUrl.includes("?") ? "&" : "?";
-        const getRes = await fetchWithTimeout(`${settings.gdriveUrl}${sep}t=${Date.now()}`, { cache: "no-store" }, 10000);
-        if (getRes.ok) { const remoteData = await getRes.json(); if (remoteData && !remoteData.empty) await mergeTwoWayData(remoteData); }
+        const backup = await RaviCloud.owner(settings.gdriveUrl, "backup.read");
+        if (backup.data && !backup.data.empty) await mergeTwoWayData(backup.data);
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
-          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds, deletedUserIds, bills, expenses, attendance, authUsers,
+          menu, deletedMenuIds, deletedBillIds, deletedExpenseIds, bills, expenses, attendance,
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
-        const postRes = await fetchWithTimeout(settings.gdriveUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }, 12000);
-        if (!postRes.ok || (await postRes.json()).ok !== true) throw Error("Cloud backup rejected");
+        await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
         document.getElementById("gdriveSyncLog").textContent = `Synced (${DEVICE_LABEL}) & Live Sheet updated (${todayTag}) at ${getNowTimeIST()}`;
         if (notify) showToast("Cloud backup synced ✓");
@@ -2319,6 +2353,7 @@
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
 
   </script>
+  <script src="./ravi-cloud.js"></script>
   <script src="./ravi-fixes.js"></script>
 </body>
 </html>

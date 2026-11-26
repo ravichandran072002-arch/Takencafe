@@ -17,6 +17,7 @@
       "manifest.json",
       "ui.css",
       "ravi-fixes.js",
+      "ravi-cloud.js",
       "sw.js",
       "icon.png",
       "icons/**/*"

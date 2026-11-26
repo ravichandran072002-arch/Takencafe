@@ -23,13 +23,14 @@ jobs:
           node-version: 22
       - name: Copy web app and branding into desktop bundle
         run: |
-          node -e "const fs=require('fs');for(const f of ['index.html','manifest.json','ui.css','ravi-fixes.js','sw.js','icon.png'])fs.copyFileSync(f,'desktop/'+f);fs.cpSync('icons','desktop/icons',{recursive:true})"
+          node -e "const fs=require('fs');for(const f of ['index.html','manifest.json','ui.css','ravi-fixes.js','ravi-cloud.js','sw.js','icon.png'])fs.copyFileSync(f,'desktop/'+f);fs.cpSync('icons','desktop/icons',{recursive:true})"
       - name: Check JS syntax and packaged resources
         run: |
           node --check desktop/main.cjs
           node --check desktop/ravi-fixes.js
+          node --check desktop/ravi-cloud.js
           node --check desktop/sw.js
-          node -e "const fs=require('fs');const html=fs.readFileSync('desktop/index.html','utf8');const scripts=[...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/gi)];if(!scripts.length)throw Error('Missing app script');for(const s of scripts)new Function(s[1]);for(const f of ['manifest.json','ui.css','ravi-fixes.js','sw.js','icons/icon-512.png'])if(!fs.existsSync('desktop/'+f))throw Error('Missing '+f);JSON.parse(fs.readFileSync('desktop/manifest.json','utf8'));"
+          node -e "const fs=require('fs');const html=fs.readFileSync('desktop/index.html','utf8');const scripts=[...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/gi)];if(!scripts.length)throw Error('Missing app script');for(const s of scripts)new Function(s[1]);for(const f of ['manifest.json','ui.css','ravi-fixes.js','ravi-cloud.js','sw.js','icons/icon-512.png'])if(!fs.existsSync('desktop/'+f))throw Error('Missing '+f);JSON.parse(fs.readFileSync('desktop/manifest.json','utf8'));"
       - run: npm install
         working-directory: desktop
       - run: npx electron-builder ${{ matrix.args }} --publish never
