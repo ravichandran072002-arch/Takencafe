@@ -23,7 +23,7 @@
   }
   function cleanInputs() {
     document.querySelectorAll("input[type=text],input[type=tel],textarea").forEach(el => {
-      if (["gdriveUrlInput", "loginPassInput", "newLoginPass"].includes(el.id)) return;
+      if (["gdriveUrlInput", "loginPassInput"].includes(el.id)) return;
       const v = cl(el.value); if (v !== el.value) el.value = v;
     });
   }
@@ -245,23 +245,6 @@
     }
   });
   loginButton.disabled = false;
-
-  window.addNewLoginUser = async function () {
-    if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan Login ID create panna mudiyum!");
-    cleanInputs();
-    const username = $r("newLoginId").value.trim(), password = $r("newLoginPass").value.trim();
-    const role = $r("newLoginRole").value, priv = role === "Owner" || role === "Manager";
-    if (sessionStorage.getItem("tc_session_logged") !== "1") return showToast("Login required");
-    if (role === "Owner" && getLoggedAccount().role !== "Owner") return showToast("Owner ID create panna Owner-ku mattum dhaan permission!");
-    if (!username || password.length < 8) return showToast("Enter Login ID & minimum 8-char Password!");
-    if (authUsers.some(u => u.username.toLowerCase() === username.toLowerCase())) return showToast("Indha Login ID already irukku!");
-    const now = Date.now(), uid = "usr-" + now + "-" + Math.floor(Math.random() * 1000);
-    authUsers.push({ uid, username, passHash: await hashPw(password), role, canViewAttendance: priv ? true : $r("newLoginAttAccess").value === "1", updatedAt: now });
-    safeStorageSet("tc_auth_users", authUsers);
-    $r("newLoginId").value = ""; $r("newLoginPass").value = "";
-    renderLoginUsersTable(); triggerBackgroundSync();
-    showToast(`✅ ${role} ID "${username}" created on this device`);
-  };
 
   window.resetUserPass = async function (uid) {
     if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!");

@@ -1068,46 +1068,16 @@
       <div class="card cloud-settings-card staff-management" id="userAccessControlCard" data-settings-panel="users" hidden>
         <h2>Staff &amp; Login Management</h2>
         <div class="staff-management-grid">
-          <section class="staff-management-panel" aria-labelledby="staff-create-title">
+          <section class="staff-management-panel" id="onlineAccountCreate" aria-labelledby="staff-create-title">
             <h3 id="staff-create-title">Create login ID</h3>
             <div class="cloud-settings-fields" id="addUserFields">
-              <div class="user-fields-grid">
-                <div class="field-group">
-                  <label for="userAccountType">Account type</label>
-                  <select id="userAccountType" onchange="updateUserAccountForm()">
-                    <option value="local">Local · this device</option>
-                    <option value="online">Online · shared with shop devices</option>
-                  </select>
-                </div>
-                <div class="field-group">
-                  <label for="newLoginId">Login ID</label>
-                  <input type="text" id="newLoginId" placeholder="e.g. manager02" autocomplete="off" aria-describedby="onlineLoginIdRules" />
-                </div>
+              <div class="field-group">
+                <label for="newLoginId">Login ID</label>
+                <input type="text" id="newLoginId" placeholder="e.g. staff01" autocomplete="off" aria-describedby="onlineLoginIdRules" />
+                <p id="onlineLoginIdRules">Use the same login ID on any shop device. No spaces.</p>
               </div>
-              <div class="user-fields-grid" id="localUserFields">
-                <div class="field-group">
-                  <label for="newLoginPass">Password (at least 8 characters)</label>
-                  <input type="password" id="newLoginPass" autocomplete="new-password" />
-                </div>
-                <div class="field-group" style="margin-bottom:0;">
-                  <label for="newLoginRole">Role</label>
-                  <select id="newLoginRole" onchange="onNewRoleChange()">
-                    <option value="Staff">Staff</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Owner">Owner</option>
-                  </select>
-                </div>
-                <div class="field-group" style="margin-bottom:0;">
-                  <label for="newLoginAttAccess">Attendance Access</label>
-                  <select id="newLoginAttAccess">
-                    <option value="0">🔒 Restricted (No)</option>
-                    <option value="1">✅ Allowed (Yes)</option>
-                  </select>
-                </div>
-              </div>
-              <div class="cloud-settings-fields" id="onlineUserFields" hidden>
-                <p id="onlineLoginIdRules">Online IDs use 3–32 letters, numbers, dots, dashes or underscores.</p>
-            <label for="onlineUserMethod">Online Staff sign-in</label>
+              <div class="cloud-settings-fields" id="onlineUserFields">
+                <label for="onlineUserMethod">Sign in with</label>
                 <select id="onlineUserMethod" onchange="updateUserAccountForm()">
                   <option value="password">Generate password</option>
                   <option value="pin">Set 4-digit PIN</option>
@@ -1126,12 +1096,12 @@
             <h3 id="staff-accounts-title">Manage existing users</h3>
             <input id="staffAccountSearch" type="search" placeholder="Search login IDs" aria-label="Search login IDs" oninput="filterStaffAccounts()" />
             <section class="user-account-list" id="localAccounts">
-              <h3>Local accounts</h3>
+              <h3>Existing device accounts</h3>
               <ul id="loginUsersTable" class="user-list"></ul>
             </section>
             <section class="user-account-list" id="cloudStaffPanel" hidden>
               <div class="cloud-settings-heading">
-                <h3>Online accounts</h3>
+                <h3>Shop accounts</h3>
                 <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
               </div>
               <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
@@ -1983,53 +1953,17 @@
       const logged = sessionStorage.getItem("tc_session_logged") === "1";
       const account = getLoggedAccount();
       const cloud = typeof RaviCloud !== "undefined" ? RaviCloud : null;
-      const canCreateLocal = logged && account.isOwnerOrMgr && !cloud?.isOnlineOwner();
+      const canManageDeviceAccounts = logged && account.isOwnerOrMgr && !cloud?.isOnlineOwner();
       const canCreateOnline = logged && account.role === "Owner";
-      document.getElementById("userAccessControlCard").hidden = !canCreateLocal && !canCreateOnline;
-      document.getElementById("localAccounts").hidden = !canCreateLocal;
+      document.getElementById("userAccessControlCard").hidden = !canManageDeviceAccounts && !canCreateOnline;
+      document.getElementById("localAccounts").hidden = !canManageDeviceAccounts;
 
-      const type = document.getElementById("userAccountType");
-      type.options[0].disabled = !canCreateLocal;
-      type.options[1].disabled = !canCreateOnline;
-      if (type.value === "local" && !canCreateLocal && canCreateOnline) type.value = "online";
-      if (type.value === "online" && !canCreateOnline) type.value = "local";
-      const online = type.value === "online";
+      document.getElementById("onlineAccountCreate").hidden = !canCreateOnline;
       const method = document.getElementById("onlineUserMethod");
       const canAssignPin = canCreateOnline && cloud?.canAssignStaffPin();
       method.options[1].disabled = !canAssignPin;
       if (method.value === "pin" && !canAssignPin) method.value = "password";
-      document.getElementById("localUserFields").hidden = online;
-      document.getElementById("onlineUserFields").hidden = !online;
-      document.getElementById("staffPinSetup").hidden = !online || method.value !== "pin";
-    }
-
-    function onNewRoleChange() {
-      const role = document.getElementById("newLoginRole").value;
-      const attSel = document.getElementById("newLoginAttAccess");
-      if (role === "Owner" || role === "Manager") {
-        attSel.value = "1"; attSel.disabled = true;
-      } else {
-        attSel.value = "0"; attSel.disabled = false;
-      }
-    }
-
-    function addNewLoginUser() {
-      if (!getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan Login ID create panna mudiyum!");
-      const username = document.getElementById("newLoginId").value.trim();
-      const password = document.getElementById("newLoginPass").value.trim();
-      const role = document.getElementById("newLoginRole").value;
-      const isOwnerOrMgr = role === "Owner" || role === "Manager";
-      const canViewAttendance = isOwnerOrMgr ? true : (document.getElementById("newLoginAttAccess").value === "1");
-      if (!username || password.length < 4) return showToast("Enter Login ID & minimum 4-char Password!");
-      if (authUsers.some(u => u.username.toLowerCase() === username.toLowerCase())) return showToast("Indha Login ID already irukku!");
-      const now = Date.now();
-      authUsers.push({ uid: "usr-" + now + "-" + Math.floor(Math.random() * 1000), username, password, role, canViewAttendance, updatedAt: now });
-      safeStorageSet("tc_auth_users", authUsers);
-      document.getElementById("newLoginId").value = "";
-      document.getElementById("newLoginPass").value = "";
-      renderLoginUsersTable();
-      triggerBackgroundSync();
-      showToast(`✅ ${role} ID "${username}" created & synced!`);
+      document.getElementById("staffPinSetup").hidden = !canCreateOnline || method.value !== "pin";
     }
 
     function toggleStaffAttendanceAccess(uid) {

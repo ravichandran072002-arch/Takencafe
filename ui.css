@@ -288,7 +288,7 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 .staff-management #staffAccountSearch { margin-top: 12px; background: var(--bg); }
 .staff-management { container-type: inline-size; }
 @container (min-width: 720px) {
-  .staff-management-grid { grid-template-columns: minmax(260px, .84fr) minmax(0, 1.16fr); }
+  .staff-management-grid:has(#onlineAccountCreate:not([hidden])) { grid-template-columns: minmax(260px, .84fr) minmax(0, 1.16fr); }
 }
 @media (max-width: 440px) {
   .staff-management-grid { gap: 12px; }
@@ -353,3 +353,5 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+#onlineLoginIdRules { margin-top: 5px; }

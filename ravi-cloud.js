@@ -807,7 +807,6 @@ function doPost(e) {
           reset.className = "mini-btn";
           reset.textContent = "Set or reset PIN";
           reset.onclick = () => {
-            byId("userAccountType").value = "online";
             byId("onlineUserMethod").value = "pin";
             byId("newLoginId").value = id;
             updateUserAccountForm();
@@ -953,7 +952,7 @@ function doPost(e) {
 
     const addUserButton = byId("addUserButton");
     addUserButton.addEventListener("click", async () => {
-      if (addUserButton.disabled) return;
+      if (addUserButton.disabled || !isOwner()) return;
       addUserButton.disabled = true;
       result.textContent = "";
       passwordField.value = "";
@@ -961,15 +960,10 @@ function doPost(e) {
       const idField = byId("newLoginId");
       const session = sessionStorage.getItem("tc_logged_uid");
       try {
-        if (byId("userAccountType").value === "local") {
-          if (isOnlineOwner()) return;
-          await addNewLoginUser();
-        } else if (isOwner()) {
-          const id = idField.value.trim().toLowerCase();
-          if (byId("onlineUserMethod").value === "pin") await createOnlinePin(id);
-          else await createOnlinePassword(id);
-          if (isOwner() && sessionStorage.getItem("tc_logged_uid") === session && idField.value.trim().toLowerCase() === id) idField.value = "";
-        }
+        const id = idField.value.trim().toLowerCase();
+        if (byId("onlineUserMethod").value === "pin") await createOnlinePin(id);
+        else await createOnlinePassword(id);
+        if (isOwner() && sessionStorage.getItem("tc_logged_uid") === session && idField.value.trim().toLowerCase() === id) idField.value = "";
       } catch (error) {
         if (sessionStorage.getItem("tc_logged_uid") === session) result.textContent = error.message;
       } finally {
