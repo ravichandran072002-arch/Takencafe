@@ -7,10 +7,10 @@ function getOrCreateFolder() {
   return folders.hasNext() ? folders.next() : DriveApp.createFolder(FOLDER_NAME);
 }
 
-function getOrCreateSpreadsheet(folder) {
-  const files = folder.getFilesByName(SHEET_NAME);
+function getOrCreateSpreadsheet(folder, name) {
+  const files = folder.getFilesByName(name);
   if (files.hasNext()) return SpreadsheetApp.openById(files.next().getId());
-  const ss = SpreadsheetApp.create(SHEET_NAME);
+  const ss = SpreadsheetApp.create(name);
   DriveApp.getFileById(ss.getId()).moveTo(folder);
   return ss;
 }
@@ -26,8 +26,12 @@ function writeSheetTab(ss, title, rows) {
   sh.setFrozenRows(1);
 }
 
-function updateLiveSheetFromBody(folder, body, changes) {
-  const ss = getOrCreateSpreadsheet(folder);
+function updateLiveSheetFromBody(folder, body, changes, targetSheet) {
+  if (body.exportSettings) {
+    folder = DriveApp.getFolderById(body.exportSettings.folderId);
+  }
+  const sheetName = body.exportSettings ? (String(body.settings?.name || "RAVI POS").slice(0, 60) + " · RAVI POS") : SHEET_NAME;
+  const ss = targetSheet || getOrCreateSpreadsheet(folder, sheetName);
   const bills = Array.isArray(body.bills) ? body.bills : [];
   const expenses = Array.isArray(body.expenses) ? body.expenses : [];
   const attendance = Array.isArray(body.attendance) ? body.attendance : [];
@@ -44,18 +48,32 @@ function updateLiveSheetFromBody(folder, body, changes) {
     if (!dayMap[k]) dayMap[k] = { date: k, count: 0, cash: 0, digital: 0, sales: 0, exp: 0 };
     dayMap[k].exp += Number(e.amount || 0);
   });
+  const entries = Array.isArray(body.shopEntries) ? body.shopEntries : [];
+  for (const entry of entries.filter(row => row.kind === "cash")) {
+    const day = dayMap[entry.date] ||= { date: entry.date, count: 0, cash: 0, digital: 0, sales: 0, exp: 0 };
+    day.drawerAdded = (day.drawerAdded || 0) + entry.amount;
+  }
   const dayRows = [["Date", "Total Bills", "Cash Sales", "UPI/Card Sales", "Total Sales", "Expenses", "Cash in Drawer", "Net Profit"]];
-  Object.values(dayMap).forEach(d => dayRows.push([d.date, d.count, d.cash, d.digital, d.sales, d.exp, d.cash - d.exp, d.sales - d.exp]));
+  Object.values(dayMap).forEach(d => dayRows.push([d.date, d.count, d.cash, d.digital, d.sales, d.exp, d.cash + (d.drawerAdded || 0) - d.exp, d.sales - d.exp]));
   const billRows = [["Bill No", "Date", "Time", "Staff", "Type", "Customer", "Mode", "Items", "Subtotal", "Packing", "Discount", "GST", "Grand Total"]];
   bills.forEach(b => billRows.push([b.billNo, b.date, b.time || (b.timestamp > 0 ? Utilities.formatDate(new Date(b.timestamp), "Asia/Kolkata", "hh:mm a") : ""), b.staff || "", b.type || "", b.customer || "", b.mode || "", (b.items || []).map(i => i.name + " x" + i.qty).join("; "), Number(b.sub || 0), Number(b.packing || 0), Number(b.discount || 0), Number(b.gst || 0), Number(b.total || 0)]));
   const expRows = [["Date", "Category", "Note", "Amount"]];
   expenses.forEach(e => expRows.push([e.date, e.cat, e.note, Number(e.amount || 0)]));
   const attRows = [["Employee", "Date", "In Time", "Out Time", "Duration", "Device"]];
   attendance.forEach(a => attRows.push([a.name, a.date, a.inTime, a.outTime || "Active", a.duration || "-", a.device || ""]));
-  if (!changes || changes.bills) writeSheetTab(ss, "Day_Wise_Summary", dayRows);
-  if (!changes || changes.bills) writeSheetTab(ss, "Bills_Register", billRows);
-  if (!changes) writeSheetTab(ss, "Expenses", expRows);
-  if (!changes || changes.attendance) writeSheetTab(ss, "Staff_Attendance", attRows);
+  const enabled = new Set(body.exportSettings?.tabs || ["bills", "expenses", "attendance", "stock", "advances"]);
+  if (enabled.has("bills") && (!changes || changes.bills || changes.expenses)) writeSheetTab(ss, "Day_Wise_Summary", dayRows);
+  if (enabled.has("bills") && (!changes || changes.bills)) writeSheetTab(ss, "Bills_Register", billRows);
+  if (enabled.has("expenses") && (!changes || changes.expenses)) writeSheetTab(ss, "Expenses", expRows);
+  if (enabled.has("attendance") && (!changes || changes.attendance)) writeSheetTab(ss, "Staff_Attendance", attRows);
+  if (enabled.has("stock") && (!changes || changes.stock)) {
+    const stock = entries.filter(row => row.kind === "stock").map(row => [row.note, row.amount, row.manufactured, row.expiry, row.by]);
+    writeSheetTab(ss, "Stock", [["Item", "Quantity", "Manufactured", "Expiry", "Recorded by"], ...stock]);
+  }
+  if (enabled.has("advances") && !changes) {
+    const advances = entries.filter(row => row.kind === "advance").map(row => [row.date, row.recipient, row.amount, row.by]);
+    writeSheetTab(ss, "Staff_Advances", [["Date", "Staff", "Amount", "Recorded by"], ...advances]);
+  }
   const defSh = !changes && ss.getSheetByName("Sheet1");
   if (defSh && ss.getSheets().length > 1) ss.deleteSheet(defSh);
 }
@@ -79,8 +97,10 @@ function writeBackup(body, archive, changes) {
   const liveFiles = folder.getFilesByName(LIVE_FILE);
   if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);
   if (archive && body.backupFileName) {
-    const bFiles = folder.getFilesByName(body.backupFileName);
-    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);
+    const exportFolder = body.exportSettings ? DriveApp.getFolderById(body.exportSettings.folderId) : folder;
+    const archiveName = body.exportSettings ? String(body.settings?.name || "RAVI POS").slice(0,60) + "_" + body.backupFileName.slice(10) : body.backupFileName;
+    const bFiles = exportFolder.getFilesByName(archiveName);
+    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else exportFolder.createFile(archiveName, jsonStr, MimeType.PLAIN_TEXT);
   }
   updateLiveSheetFromBody(folder, body, changes);
   properties.deleteProperty("RAVI_SHEET_DIRTY");
@@ -94,7 +114,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true });
 }
 
 function raviEqual(left, right) {
@@ -122,7 +142,8 @@ function raviMergeBackup(saved, incoming) {
     ["menu", "deletedMenuIds", row => row.id],
     ["bills", "deletedBillIds", row => row.uid || row.billNo],
     ["expenses", "deletedExpenseIds", row => row.uid || (row.date + row.note + row.amount)],
-    ["attendance", null, row => row.uid]
+    ["attendance", null, row => row.uid],
+    ["shopEntries", null, row => row.uid]
   ]) {
     const deleted = new Set(tombstones ? [...(saved[tombstones] || []), ...(incoming[tombstones] || [])].map(String) : []);
     if (tombstones) merged[tombstones] = [...deleted].map(id => field === "menu" && /^\d+$/.test(id) ? Number(id) : id);
@@ -151,6 +172,13 @@ function raviStaffRows(rows, id, kind) {
   return rows.map(row => {
     if (typeof row.uid !== "string" || !/^s:[a-z0-9._-]+:[a-f0-9-]{36}$/.test(row.uid) || !row.uid.startsWith("s:" + id + ":")) throw Error("Invalid record ID");
     const base = { uid: row.uid, date: text(row.date, 16), device: text(row.device, 32), updatedAt: date(row.updatedAt || 0) };
+    if (kind === "expenses") return {
+      ...base, timestamp: date(row.timestamp), cat: text(row.cat), note: text(row.note), amount: number(row.amount), staff: id
+    };
+    if (kind === "stock") {
+      if (row.kind !== "stock" || !raviValidStockDates(row) || !Number.isSafeInteger(row.amount) || row.amount < 1 || row.amount > 1000000 || !text(row.note).trim()) throw Error("Invalid stock batch");
+      return { ...base, kind: "stock", by: id, note: text(row.note), amount: row.amount, manufactured: row.manufactured, expiry: row.expiry };
+    }
     if (kind === "attendance") return {
       ...base, name: id, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),
       inTime: text(row.inTime, 20), outTime: text(row.outTime, 20), duration: text(row.duration, 32)
@@ -166,21 +194,32 @@ function raviStaffRows(rows, id, kind) {
   });
 }
 
+function raviValidStockDates(row) {
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  return datePattern.test(row.manufactured) && datePattern.test(row.expiry) && row.manufactured <= row.expiry;
+}
+
 function raviStaffSync(req) {
   const bills = raviStaffRows(req.bills, req.id, "bills");
   const attendance = raviStaffRows(req.attendance, req.id, "attendance");
-  const current = readBackup();
-  if (bills.length || attendance.length) {
-    const changes = { bills: bills.length > 0, attendance: attendance.length > 0 };
-    const incoming = { ...(changes.bills ? { bills } : {}), ...(changes.attendance ? { attendance } : {}) };
-    writeBackup(raviMergeBackup(current, incoming), false, current.empty ? undefined : changes);
+  const expenses = raviStaffRows(req.expenses === undefined ? [] : req.expenses, req.id, "expenses");
+  const stock = raviStaffRows(req.stock === undefined ? [] : req.stock, req.id, "stock");
+  let current = readBackup();
+  if (bills.length || attendance.length || expenses.length || stock.length) {
+    const changes = { bills: bills.length > 0, attendance: attendance.length > 0, expenses: expenses.length > 0, stock: stock.length > 0 };
+    const incoming = { bills, attendance, expenses, shopEntries: stock };
+    const merged = raviMergeBackup(current, incoming);
+    if (JSON.stringify(merged) !== JSON.stringify(current) || PropertiesService.getScriptProperties().getProperty("RAVI_SHEET_DIRTY")) {
+      writeBackup(merged, false, current.empty ? undefined : changes);
+    }
+    current = merged;
   }
   const whatsAppPdf = current.billingPreferences?.whatsAppPdf === true;
   const shop = current.settings;
-  const receiptShop = whatsAppPdf && shop ? {
-    name: shop.name, address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi
-  } : undefined;
-  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance });
+  const receiptShop = shop ? { name: shop.name, ...(whatsAppPdf ? { address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi } : {}) } : undefined;
+  const shopEntries = (current.shopEntries || []).filter(row => row.kind === "stock"
+    || (["advance", "message"].includes(row.kind) && row.recipient === req.id));
+  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, shopEntries, shopOperations: true });
 }
 
 function raviRole(props, id) {
@@ -311,6 +350,52 @@ function doPost(e) {
       if (role === "staff") return raviReply(accountLogin || (primaryId && raviEqual(req.ownerKey, ownerKey))
         ? { ok: false, reason: "revoked" } : bad);
       if (req.action === "owner.check") return raviReply({ ok: true, role, canBootstrap: !accountLogin });
+      if (req.action === "exports.xlsx") {
+        if (role !== "primary") return raviReply(bad);
+        const current = readBackup();
+        const folder = current.exportSettings ? DriveApp.getFolderById(current.exportSettings.folderId) : getOrCreateFolder();
+        const shopName = String(current.settings?.name || "RAVI POS").trim().slice(0,60) || "RAVI POS";
+        const filename = shopName + " · RAVI Reports.xlsx";
+        const workbook = SpreadsheetApp.create(shopName + " · RAVI export");
+        const temporaryFile = DriveApp.getFileById(workbook.getId());
+        try {
+          updateLiveSheetFromBody(folder, current, undefined, workbook);
+          SpreadsheetApp.flush();
+          const response = UrlFetchApp.fetch("https://docs.google.com/spreadsheets/d/" + workbook.getId() + "/export?format=xlsx", {
+            headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }
+          });
+          const blob = response.getBlob().setName(filename);
+          if (blob.getBytes().slice(0, 2).join(",") !== "80,75") throw Error("Invalid workbook");
+          const exportKey = "RAVI_XLSX_" + folder.getId();
+          const previousId = props.getProperty(exportKey);
+          const created = folder.createFile(blob);
+          props.setProperty(exportKey, created.getId());
+          if (previousId) {
+            try { DriveApp.getFileById(previousId).setTrashed(true); } catch (_) {}
+          }
+          return raviReply({ ok: true, filename });
+        } finally { temporaryFile.setTrashed(true); }
+      }
+      if (req.action === "exports.configure") {
+        if (role !== "primary") return raviReply(bad);
+        const tabs = Array.isArray(req.tabs) ? [...new Set(req.tabs)] : [];
+        if (!tabs.length || tabs.some(tab => !["bills", "expenses", "attendance", "stock", "advances"].includes(tab))) return raviReply(bad);
+        const current = readBackup();
+        const shopName = String(current.settings?.name || req.shopName || "RAVI POS").trim().slice(0,60) || "RAVI POS";
+        let folder;
+        if (req.folderId) {
+          if (!/^[A-Za-z0-9_-]{10,120}$/.test(req.folderId)) return raviReply(bad);
+          folder = DriveApp.getFolderById(req.folderId);
+        } else {
+          const savedId = current.exportSettings?.folderId || props.getProperty("RAVI_CREATED_EXPORT_FOLDER");
+          folder = savedId ? DriveApp.getFolderById(savedId) : DriveApp.createFolder(shopName + " · RAVI POS");
+          props.setProperty("RAVI_CREATED_EXPORT_FOLDER", folder.getId());
+        }
+        current.exportSettings = { folderId: folder.getId(), tabs };
+        delete current.empty;
+        writeBackup(current, false);
+        return raviReply({ ok: true, folderName: folder.getName(), folderId: folder.getId() });
+      }
       if (req.action === "backup.read") return raviReply({ ok: true, data: readBackup() });
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
@@ -326,6 +411,7 @@ function doPost(e) {
         const data = req.data;
         delete data.authUsers;
         delete data.deletedUserIds;
+        delete data.exportSettings;
         const preferences = data.billingPreferences;
         if (typeof preferences?.whatsAppPdf !== "boolean" || !Number.isSafeInteger(preferences.updatedAt) || preferences.updatedAt <= 0) {
           delete data.billingPreferences;
@@ -342,6 +428,18 @@ function doPost(e) {
         }
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
         const current = readBackup();
+        if (Array.isArray(data.shopEntries)) {
+          const known = new Set((current.shopEntries || []).map(row => row.uid));
+          data.shopEntries = data.shopEntries.filter(row => row && typeof row.uid === "string" && !known.has(row.uid)
+            && /^[a-f0-9-]{36}$/.test(row.uid) && typeof row.date === "string" && row.date.length <= 16
+            && Number.isSafeInteger(row.updatedAt) && row.updatedAt > 0 && typeof row.by === "string" && row.by.length <= 120
+            && typeof row.note === "string" && row.note.length <= 300
+            && (row.kind === "message" ? Boolean(row.note.trim()) : Number.isFinite(row.amount) && row.amount > 0 && row.amount <= 100000000)
+            && (row.kind === "stock" ? raviValidStockDates(row) && Number.isSafeInteger(row.amount) && row.amount <= 1000000 && Boolean(row.note.trim())
+              : row.kind === "cash" ? Boolean(row.note.trim())
+              : ["message", "advance"].includes(row.kind) && /^[a-z0-9][a-z0-9._-]{2,31}$/.test(row.recipient || "")
+                && props.getProperty("staff:" + row.recipient) && raviRole(props, row.recipient) === "staff" && !props.getProperty("revoked:" + row.recipient)));
+        } else delete data.shopEntries;
         const merged = raviMergeBackup(current, data);
         const fields = new Set([...Object.keys(current), ...Object.keys(merged)]);
         fields.delete("syncedAt");
