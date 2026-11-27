@@ -747,6 +747,10 @@ const RaviCloud = (() => {
       const online = mode.value === "staff";
       const password = online && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
       byId("localLoginStaffName").hidden = online;
+      byId("shopAccountLoginTitle").textContent = online ? "Shop account" : "Device account";
+      byId("shopAccountLoginHelp").textContent = online
+        ? "Staff and co-owners sign in here with their own Login ID and PIN."
+        : "Use the credentials saved on this device.";
       byId("pinEnrollment").hidden = !password;
       byId("newPinFields").hidden = !password || !setupPin.checked;
       byId("loginPassLabel").textContent = online ? "Password or 4-digit PIN" : "Password";

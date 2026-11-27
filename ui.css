@@ -358,3 +358,6 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 }
 .shop-entry-form .drive-auto-excel { display: flex; align-items: center; }
 .shop-entry-form .drive-auto-excel input { width: auto; min-height: 26px; }
+
+.shop-account-login-title { margin: 0 0 4px; font-size: 15px; }
+.shop-account-login-help { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.45; }
