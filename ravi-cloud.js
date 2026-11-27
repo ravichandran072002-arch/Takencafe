@@ -431,8 +431,6 @@ function doPost(e) {
   function refreshOwnerPanel() {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !allowed;
-    byId("staffPinSetup").hidden = !allowed || ownerConnection?.role !== "primary";
-    byId("staffPasswordSetup").open = allowed && ownerConnection?.role !== "primary";
     const setup = byId("cloudOwnerSetup");
     setup.hidden = !allowed || isOnlineOwner();
     if (allowed && !ownerConnected()) {
@@ -458,10 +456,10 @@ function doPost(e) {
       byId("cloudStaffPassword").value = "";
       byId("cloudStaffPassword").hidden = true;
       byId("cloudStaffList").replaceChildren();
-      byId("staffPinSetup").hidden = true;
       byId("assignedStaffPin").value = "";
       byId("cloudStaffResult").textContent = "";
     }
+    updateUserAccountForm();
   }
 
   function isOnlineOwner() {
@@ -658,7 +656,7 @@ function doPost(e) {
       if (!isOwner() || endpoint !== shopLink()) return;
       const list = byId("cloudStaffList");
       list.replaceChildren();
-      byId("staffPinSetup").hidden = !canManageOwners;
+      updateUserAccountForm();
       byId("cloudOwnershipNote").hidden = !canManageOwners || !ids.length;
       for (const id of ids.filter(id => staffId.test(id))) {
         const role = roles?.[id] || "staff";
@@ -762,8 +760,7 @@ function doPost(e) {
       }
     }, setupResult);
 
-    run(byId("createCloudStaff"), async () => {
-      const id = byId("cloudStaffId").value.trim().toLowerCase();
+    async function createOnlinePassword(id) {
       const endpoint = shopLink();
       if (!staffId.test(id)) throw Error("Use 3–32 lowercase letters, numbers, dots, dashes or underscores.");
       if (pendingStaff?.id !== id || pendingStaff.endpoint !== endpoint) {
@@ -779,10 +776,9 @@ function doPost(e) {
       result.textContent = "Created " + id + ". Share this password with that staff member.";
       pendingStaff = undefined;
       await refreshList(endpoint);
-    });
+    }
 
-    run(byId("saveStaffPin"), async () => {
-      const id = byId("cloudStaffId").value.trim().toLowerCase();
+    async function createOnlinePin(id) {
       const pinField = byId("assignedStaffPin");
       const assignedPin = pinField.value;
       const endpoint = shopLink();
@@ -797,6 +793,32 @@ function doPost(e) {
       result.textContent = installed
         ? "PIN saved for " + id + ". Tap Approve staff PIN once." + (created ? " Keep the generated account password privately for future owner access." : "")
         : "The PIN for " + id + " is already set.";
+    }
+
+    const addUserButton = byId("addUserButton");
+    addUserButton.addEventListener("click", async () => {
+      if (addUserButton.disabled) return;
+      addUserButton.disabled = true;
+      result.textContent = "";
+      passwordField.value = "";
+      passwordField.hidden = true;
+      const idField = byId("newLoginId");
+      const session = sessionStorage.getItem("tc_logged_uid");
+      try {
+        if (byId("userAccountType").value === "local") {
+          if (isOnlineOwner()) return;
+          await addNewLoginUser();
+        } else if (isOwner()) {
+          const id = idField.value.trim().toLowerCase();
+          if (byId("onlineUserMethod").value === "pin") await createOnlinePin(id);
+          else await createOnlinePassword(id);
+          if (isOwner() && sessionStorage.getItem("tc_logged_uid") === session && idField.value.trim().toLowerCase() === id) idField.value = "";
+        }
+      } catch (error) {
+        if (sessionStorage.getItem("tc_logged_uid") === session) result.textContent = error.message;
+      } finally {
+        addUserButton.disabled = false;
+      }
     });
 
     run(byId("listCloudStaff"), () => refreshList(shopLink()));
@@ -818,5 +840,5 @@ function doPost(e) {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected };
+  return { init, owner, staff, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, canAssignStaffPin: () => ownerConnection?.role === "primary", staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected };
 })();

@@ -1073,55 +1073,84 @@
         </div>
       </div>
 
-      <div class="card" id="userAccessControlCard" data-settings-panel="users">
-        <span class="card-title">🔐 Login IDs & Attendance Access Control</span>
-        <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">
-          <b>Owner</b> & <b>Manager</b>-ku attendance automatic-ah theriyum. <b>Staff</b>-ku attendance paakka access venumna, keezha <b>Attendance Access</b> button-a ON pannikalam.
-        </p>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div class="field-group">
-            <label>New Login ID *</label>
-            <input type="text" id="newLoginId" placeholder="e.g. manager1, staff1" />
+      <div class="card cloud-settings-card" id="userAccessControlCard" data-settings-panel="users" hidden>
+        <h2>Users &amp; Access</h2>
+        <div class="cloud-settings-fields" id="addUserFields">
+          <div class="user-fields-grid">
+            <div class="field-group">
+              <label for="userAccountType">Account type</label>
+              <select id="userAccountType" onchange="updateUserAccountForm()">
+                <option value="local">Local · this device</option>
+                <option value="online">Online · shared with shop devices</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="newLoginId">Login ID</label>
+              <input type="text" id="newLoginId" placeholder="e.g. priya" autocomplete="off" />
+            </div>
           </div>
-          <div class="field-group">
-            <label>Password (min 4 chars) *</label>
-            <input type="text" id="newLoginPass" placeholder="e.g. 1234" />
+          <div class="user-fields-grid" id="localUserFields">
+            <div class="field-group">
+              <label for="newLoginPass">Password (at least 8 characters)</label>
+              <input type="password" id="newLoginPass" autocomplete="new-password" />
+            </div>
+            <div class="field-group" style="margin-bottom:0;">
+              <label for="newLoginRole">Role</label>
+              <select id="newLoginRole" onchange="onNewRoleChange()">
+                <option value="Staff">Staff</option>
+                <option value="Manager">Manager</option>
+                <option value="Owner">Owner</option>
+              </select>
+            </div>
+            <div class="field-group" style="margin-bottom:0;">
+              <label for="newLoginAttAccess">Attendance Access</label>
+              <select id="newLoginAttAccess">
+                <option value="0">🔒 Restricted (No)</option>
+                <option value="1">✅ Allowed (Yes)</option>
+              </select>
+            </div>
           </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <div class="field-group" style="margin-bottom:0;">
-            <label>Role</label>
-            <select id="newLoginRole" onchange="onNewRoleChange()">
-              <option value="Staff">Staff</option>
-              <option value="Manager">Manager</option>
-              <option value="Owner">Owner</option>
+          <div class="cloud-settings-fields" id="onlineUserFields" hidden>
+            <label for="onlineUserMethod">Online Staff sign-in</label>
+            <select id="onlineUserMethod" onchange="updateUserAccountForm()">
+              <option value="password">Generate password</option>
+              <option value="pin">Set 4-digit PIN</option>
             </select>
+            <div id="staffPinSetup" class="cloud-settings-fields" hidden>
+              <label for="assignedStaffPin">4-digit Staff PIN</label>
+              <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
+            </div>
           </div>
-          <div class="field-group" style="margin-bottom:0;">
-            <label>Attendance Access</label>
-            <select id="newLoginAttAccess">
-              <option value="0">🔒 Restricted (No)</option>
-              <option value="1">✅ Allowed (Yes)</option>
-            </select>
-          </div>
+          <button type="button" class="btn btn-primary" id="addUserButton">Add user</button>
+          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
+          <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
         </div>
-        <button class="btn btn-primary" style="margin-bottom:12px;" onclick="addNewLoginUser()">+ Create Local Login ID</button>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Login ID</th>
-                <th>Role</th>
-                <th>Attendance Access</th>
-                <th>Password</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="loginUsersTable"></tbody>
-          </table>
-        </div>
+        <section class="user-account-list" id="localAccounts">
+          <h3>Local accounts</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Login ID</th>
+                  <th>Role</th>
+                  <th>Attendance Access</th>
+                  <th>Password</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="loginUsersTable"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="user-account-list" id="cloudStaffPanel" hidden>
+          <div class="cloud-settings-heading">
+            <h3>Online accounts</h3>
+            <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
+          </div>
+          <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
+          <ul id="cloudStaffList"></ul>
+        </section>
       </div>
 
       <div class="card cloud-settings-card" data-settings-panel="sync">
@@ -1170,28 +1199,6 @@
             </details>
           </div>
         </details>
-      </div>
-
-      <div class="card cloud-settings-card" id="cloudStaffPanel" data-settings-panel="users" hidden>
-        <h2>Staff &amp; Owner access</h2>
-        <div class="cloud-settings-fields">
-          <label for="cloudStaffId">Online Staff ID</label>
-          <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
-          <div id="staffPinSetup" class="cloud-settings-fields" hidden>
-            <label for="assignedStaffPin">4-digit Staff PIN</label>
-            <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
-            <button type="button" class="btn btn-primary" id="saveStaffPin">Set Staff ID &amp; PIN</button>
-          </div>
-          <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
-          <details class="cloud-disclosure" id="staffPasswordSetup">
-            <summary>Staff login by password</summary>
-            <button type="button" class="btn btn-outline" id="createCloudStaff">Create Staff ID and password</button>
-          </details>
-          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
-          <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
-          <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
-          <ul id="cloudStaffList"></ul>
-        </div>
       </div>
 
       <div class="card cloud-settings-card" data-settings-panel="printer">
@@ -1820,8 +1827,7 @@
       if (badgeText) {
         badgeText.innerHTML = `Logged in as <b>${acc.username}</b> • Role: <b>${acc.role}</b>`;
       }
-      const userCard = document.getElementById("userAccessControlCard");
-      if (userCard) userCard.style.display = acc.isOwnerOrMgr && !sessionStorage.getItem("tc_logged_uid")?.startsWith("cloud-owner:") ? "block" : "none";
+      updateUserAccountForm();
 
       const regCard = document.getElementById("attendanceRegisterCard");
       const restCard = document.getElementById("attendanceRestrictedCard");
@@ -1935,6 +1941,30 @@
       checkSessionLogin();
       applyRolePermissionsUI();
       showToast("🔒 RAVI Locked");
+    }
+
+    function updateUserAccountForm() {
+      const logged = sessionStorage.getItem("tc_session_logged") === "1";
+      const account = getLoggedAccount();
+      const cloud = typeof RaviCloud !== "undefined" ? RaviCloud : null;
+      const canCreateLocal = logged && account.isOwnerOrMgr && !cloud?.isOnlineOwner();
+      const canCreateOnline = logged && account.role === "Owner";
+      document.getElementById("userAccessControlCard").hidden = !canCreateLocal && !canCreateOnline;
+      document.getElementById("localAccounts").hidden = !canCreateLocal;
+
+      const type = document.getElementById("userAccountType");
+      type.options[0].disabled = !canCreateLocal;
+      type.options[1].disabled = !canCreateOnline;
+      if (type.value === "local" && !canCreateLocal && canCreateOnline) type.value = "online";
+      if (type.value === "online" && !canCreateOnline) type.value = "local";
+      const online = type.value === "online";
+      const method = document.getElementById("onlineUserMethod");
+      const canAssignPin = canCreateOnline && cloud?.canAssignStaffPin();
+      method.options[1].disabled = !canAssignPin;
+      if (method.value === "pin" && !canAssignPin) method.value = "password";
+      document.getElementById("localUserFields").hidden = online;
+      document.getElementById("onlineUserFields").hidden = !online;
+      document.getElementById("staffPinSetup").hidden = !online || method.value !== "pin";
     }
 
     function onNewRoleChange() {
@@ -2223,7 +2253,10 @@
       if (tab === "summary") renderSummary();
       if (tab === "expenses") renderExpenses();
       if (tab === "menu") renderMenuManager();
-      if (tab === "settings") applySettingsToInputs();
+      if (tab === "settings") {
+        applySettingsToInputs();
+        if (typeof RaviCloud !== "undefined" && RaviCloud.ownerConnected()) document.getElementById("listCloudStaff").click();
+      }
     }
 
     function selectCategory(catName) { activeCat = catName; renderCategories(); renderMenu(); }
