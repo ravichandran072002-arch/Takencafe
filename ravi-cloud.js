@@ -535,7 +535,7 @@ const RaviCloud = (() => {
       credentials = { deviceToken, pin: secret };
     } else {
       if (!/^[A-Za-z0-9_-]{24}$/.test(secret)) {
-        throw Error("Enter the generated online password. For a 4-digit code, select PIN instead.");
+        throw Error("Enter your 4-digit PIN or your generated online password.");
       }
       credentials = { password: secret };
     }
@@ -1022,7 +1022,7 @@ const RaviCloud = (() => {
       passwordField.hidden = !created;
       await refreshList(endpoint);
       result.textContent = installed
-        ? "PIN saved for " + id + ". Tap Approve staff PIN once." + (created ? " Keep the generated account password privately for future owner access." : "")
+        ? "PIN saved for " + id + ". Tap Approve staff PIN once. Then staff can sign in on any shop device with this ID and PIN." + (created ? " Keep the generated recovery password private." : "")
         : "The PIN for " + id + " is already set.";
     }
 
