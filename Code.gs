@@ -180,7 +180,7 @@ function raviRole(props, id) {
 
 function raviVerifyAccount(props, pepper, req) {
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return false;
-  return raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
+  return !props.getProperty("revoked:" + req.id) && raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
 }
 
 function raviPinDeviceKey(pepper, id, token) {
@@ -205,6 +205,7 @@ function raviCheckPin(props, pepper, req) {
   const key = raviPinDeviceKey(pepper, req.id, req.deviceToken);
   const now = Date.now();
   const account = props.getProperty("staff:" + req.id);
+  if (props.getProperty("revoked:" + req.id)) return { reason: "revoked" };
   if (!account) return { reason: req.action === "staff.login" ? "pin-invalid" : "revoked" };
   const managedKey = "staff-pin:" + req.id;
   const managed = JSON.parse(props.getProperty(managedKey) || "null");
@@ -295,11 +296,12 @@ function doPost(e) {
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
         const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));
+        const revokedIds = ids.filter(id => props.getProperty("revoked:" + id));
         const pendingPins = role === "primary" ? ids.filter(id => {
           const pin = JSON.parse(props.getProperty("staff-pin:" + id) || "null");
           return roles[id] === "staff" && pin && !pin.approved;
         }) : [];
-        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins });
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins, revokedIds });
       }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
@@ -321,6 +323,12 @@ function doPost(e) {
       if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(target || "")) return raviReply(bad);
       const key = "staff:" + target;
       const targetRole = raviRole(props, target);
+      const revokedKey = "revoked:" + target;
+      if (req.action === "staff.restore" && targetRole === "staff" && props.getProperty(key)) {
+        props.deleteProperty(revokedKey);
+        return raviReply({ ok: true });
+      }
+      if (props.getProperty(revokedKey)) return raviReply(bad);
       if (req.action === "staff.pin.set") {
         if (role !== "primary" || targetRole !== "staff" || !/^\d{4}$/.test(req.assignedPin || "")) return raviReply(bad);
         const created = !props.getProperty(key);
@@ -345,9 +353,8 @@ function doPost(e) {
         props.setProperty(pinKey, JSON.stringify({ ...pin, approved: true }));
         return raviReply({ ok: true });
       }
-      if (req.action === "staff.revoke" && targetRole === "staff") {
-        props.deleteProperty(key);
-        props.deleteProperty("staff-pin:" + target);
+      if (req.action === "staff.revoke" && targetRole === "staff" && props.getProperty(key)) {
+        props.setProperty(revokedKey, "1");
         raviResetDevices(props, target);
         return raviReply({ ok: true });
       }

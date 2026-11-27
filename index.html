@@ -1074,7 +1074,7 @@
       </div>
 
       <div class="card cloud-settings-card" id="userAccessControlCard" data-settings-panel="users" hidden>
-        <h2>Users &amp; Access</h2>
+        <h2>Staff &amp; Login Management</h2>
         <div class="cloud-settings-fields" id="addUserFields">
           <div class="user-fields-grid">
             <div class="field-group">
@@ -1086,7 +1086,7 @@
             </div>
             <div class="field-group">
               <label for="newLoginId">Login ID</label>
-              <input type="text" id="newLoginId" placeholder="e.g. priya" autocomplete="off" />
+              <input type="text" id="newLoginId" placeholder="e.g. staff01" autocomplete="off" />
             </div>
           </div>
           <div class="user-fields-grid" id="localUserFields">
@@ -1117,31 +1117,19 @@
               <option value="pin">Set 4-digit PIN</option>
             </select>
             <div id="staffPinSetup" class="cloud-settings-fields" hidden>
-              <label for="assignedStaffPin">4-digit Staff PIN</label>
-              <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
+              <label for="assignedStaffPin">Password / PIN</label>
+              <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Enter 4-digit PIN" />
             </div>
           </div>
-          <button type="button" class="btn btn-primary" id="addUserButton">Add user</button>
+          <button type="button" class="btn btn-primary" id="addUserButton">+ Create Login ID</button>
           <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
           <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
         </div>
 
+        <h3 class="manage-users-title">Manage existing users</h3>
         <section class="user-account-list" id="localAccounts">
           <h3>Local accounts</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Login ID</th>
-                  <th>Role</th>
-                  <th>Attendance Access</th>
-                  <th>Password</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="loginUsersTable"></tbody>
-            </table>
-          </div>
+          <ul id="loginUsersTable" class="user-list"></ul>
         </section>
         <section class="user-account-list" id="cloudStaffPanel" hidden>
           <div class="cloud-settings-heading">
@@ -1149,7 +1137,7 @@
             <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
           </div>
           <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
-          <ul id="cloudStaffList"></ul>
+          <ul id="cloudStaffList" class="user-list"></ul>
         </section>
       </div>
 
@@ -2028,26 +2016,30 @@
       setTimeout(() => input.focus(), 80);
     }
 
+    function createUserAccountRow(username, role, status, allowed) {
+      const row = document.createElement("li");
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      const identity = document.createElement("span");
+      const name = document.createElement("strong");
+      const subtitle = document.createElement("small");
+      const badge = document.createElement("span");
+      const actions = document.createElement("div");
+      name.textContent = username;
+      subtitle.textContent = role;
+      identity.append(name, subtitle);
+      badge.className = "user-access-status";
+      badge.classList.toggle("allowed", allowed);
+      badge.textContent = status;
+      summary.append(identity, badge);
+      actions.className = "user-row-actions";
+      details.append(summary, actions);
+      row.append(details);
+      return { row, actions, details };
+    }
+
     function renderLoginUsersTable() {
-      const tbody = document.getElementById("loginUsersTable");
-      if (!tbody) return;
-      tbody.innerHTML = authUsers.map(u => {
-        const shown = revealedUserIds.has(u.uid);
-        const isOwnerOrMgr = u.role === "Owner" || u.role === "Manager" || u.role === "Admin";
-        const roleBadgeClass = isOwnerOrMgr ? "owner" : "cash";
-        const accessCell = isOwnerOrMgr
-          ? `<span class="status-pill status-in">✅ Full Access</span>`
-          : `<button class="mini-btn ${u.canViewAttendance ? 'grant' : 'del'}" onclick="toggleStaffAttendanceAccess('${u.uid}')">${u.canViewAttendance ? '✅ Allowed (Tap to Off)' : '🔒 Off (Tap to Grant)'}</button>`;
-        return `
-          <tr>
-            <td><b>${u.username}</b></td>
-            <td><span class="mode-badge ${roleBadgeClass}">${u.role}</span></td>
-            <td>${accessCell}</td>
-            <td><span style="font-family:monospace;">${shown ? u.password : "••••"}</span> <button class="mini-btn" style="margin-left:4px;padding:3px 6px;" onclick="toggleRevealUserPass('${u.uid}')">${shown ? "Hide" : "Show"}</button></td>
-            <td><button class="mini-btn del" onclick="promptDeleteLoginUser('${u.uid}')">🗑️ Del</button></td>
-          </tr>
-        `;
-      }).join("");
+      // Secure account actions and rendering are installed by ravi-fixes.js.
     }
 
     function goHome() {

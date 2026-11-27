@@ -270,13 +270,44 @@
   };
 
   window.renderLoginUsersTable = function () {
-    const tbody = $r("loginUsersTable"); if (!tbody) return;
-    tbody.innerHTML = authUsers.map(u => {
-      const priv = u.role === "Owner" || u.role === "Manager" || u.role === "Admin";
-      const access = priv ? `<span class="status-pill status-in">✅ Full Access</span>`
-        : `<button class="mini-btn ${u.canViewAttendance ? "grant" : "del"}" onclick="toggleStaffAttendanceAccess('${u.uid}')">${u.canViewAttendance ? "✅ Allowed (Tap to Off)" : "🔒 Off (Tap to Grant)"}</button>`;
-      return `<tr><td><b>${u.username}</b></td><td><span class="mode-badge ${priv ? "owner" : "cash"}">${["Owner","Manager","Admin","Staff"].includes(u.role) ? u.role : "Staff"}</span></td><td>${access}</td><td>••••••• <button class="mini-btn" style="margin-left:4px;padding:3px 6px;" onclick="resetUserPass('${u.uid}')">Reset</button></td><td><button class="mini-btn del" onclick="promptDeleteLoginUser('${u.uid}')">🗑️ Del</button></td></tr>`;
-    }).join("");
+    const list = $r("loginUsersTable");
+    const expanded = new Set([...list.querySelectorAll("details[open]")].map(row => row.dataset.account));
+    list.replaceChildren();
+    const current = getLoggedAccount();
+    for (const user of authUsers) {
+      const role = ["Owner", "Manager", "Admin", "Staff"].includes(user.role) ? user.role : "Staff";
+      const allowed = role !== "Staff" || user.canViewAttendance;
+      const { row, details, actions } = createUserAccountRow(user.username, role, allowed ? "Attendance allowed" : "Attendance blocked", allowed);
+      details.dataset.account = user.uid;
+      details.open = expanded.has(user.uid);
+      const action = (label, handler) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "mini-btn";
+        button.textContent = label;
+        button.onclick = handler;
+        actions.append(button);
+      };
+      if (role === "Staff") action(allowed ? "Block attendance" : "Allow attendance", () => toggleStaffAttendanceAccess(user.uid));
+      if (role !== "Owner" || current.role === "Owner") action("Reset password", () => resetUserPass(user.uid));
+      if (current.role === "Owner" && user.uid !== current.uid && ["Staff", "Manager"].includes(role)) {
+        const nextRole = role === "Staff" ? "Manager" : "Staff";
+        action("Make " + nextRole, () => {
+          if (sessionStorage.getItem("tc_session_logged") !== "1" || getLoggedAccount().role !== "Owner") return;
+          const updated = authUsers.map(account => account.uid === user.uid ? {
+            ...account, role: nextRole, canViewAttendance: nextRole === "Manager", updatedAt: Date.now()
+          } : account);
+          if (!safeStorageSet("tc_auth_users", updated)) return;
+          authUsers = updated;
+          renderLoginUsersTable();
+          showToast(user.username + " is now " + nextRole + ".");
+        });
+      }
+      if (user.uid !== current.uid && (role !== "Owner" || current.role === "Owner")) {
+        action("Delete local account", () => promptDeleteLoginUser(user.uid));
+      }
+      list.append(row);
+    }
   };
 
   /* ---------- 2. Delete PIN (hashed, owner-set, no hardcoded value) ---------- */

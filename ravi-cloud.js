@@ -109,7 +109,7 @@ function raviRole(props, id) {
 
 function raviVerifyAccount(props, pepper, req) {
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(req.id || "") || !/^[A-Za-z0-9_-]{24}$/.test(req.password || "")) return false;
-  return raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
+  return !props.getProperty("revoked:" + req.id) && raviEqual(raviStaffDigest(pepper, req.id, req.password), props.getProperty("staff:" + req.id));
 }
 
 function raviPinDeviceKey(pepper, id, token) {
@@ -134,6 +134,7 @@ function raviCheckPin(props, pepper, req) {
   const key = raviPinDeviceKey(pepper, req.id, req.deviceToken);
   const now = Date.now();
   const account = props.getProperty("staff:" + req.id);
+  if (props.getProperty("revoked:" + req.id)) return { reason: "revoked" };
   if (!account) return { reason: req.action === "staff.login" ? "pin-invalid" : "revoked" };
   const managedKey = "staff-pin:" + req.id;
   const managed = JSON.parse(props.getProperty(managedKey) || "null");
@@ -224,11 +225,12 @@ function doPost(e) {
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
         const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));
+        const revokedIds = ids.filter(id => props.getProperty("revoked:" + id));
         const pendingPins = role === "primary" ? ids.filter(id => {
           const pin = JSON.parse(props.getProperty("staff-pin:" + id) || "null");
           return roles[id] === "staff" && pin && !pin.approved;
         }) : [];
-        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins });
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins, revokedIds });
       }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
@@ -250,6 +252,12 @@ function doPost(e) {
       if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(target || "")) return raviReply(bad);
       const key = "staff:" + target;
       const targetRole = raviRole(props, target);
+      const revokedKey = "revoked:" + target;
+      if (req.action === "staff.restore" && targetRole === "staff" && props.getProperty(key)) {
+        props.deleteProperty(revokedKey);
+        return raviReply({ ok: true });
+      }
+      if (props.getProperty(revokedKey)) return raviReply(bad);
       if (req.action === "staff.pin.set") {
         if (role !== "primary" || targetRole !== "staff" || !/^\d{4}$/.test(req.assignedPin || "")) return raviReply(bad);
         const created = !props.getProperty(key);
@@ -274,9 +282,8 @@ function doPost(e) {
         props.setProperty(pinKey, JSON.stringify({ ...pin, approved: true }));
         return raviReply({ ok: true });
       }
-      if (req.action === "staff.revoke" && targetRole === "staff") {
-        props.deleteProperty(key);
-        props.deleteProperty("staff-pin:" + target);
+      if (req.action === "staff.revoke" && targetRole === "staff" && props.getProperty(key)) {
+        props.setProperty(revokedKey, "1");
         raviResetDevices(props, target);
         return raviReply({ ok: true });
       }
@@ -652,17 +659,21 @@ function doPost(e) {
     }
 
     async function refreshList(endpoint) {
-      const { ids, roles, canManageOwners, pendingPins } = await owner(endpoint, "staff.list");
+      const { ids, roles, canManageOwners, pendingPins, revokedIds } = await owner(endpoint, "staff.list");
       if (!isOwner() || endpoint !== shopLink()) return;
       const list = byId("cloudStaffList");
+      const expanded = new Set([...list.querySelectorAll("details[open]")].map(row => row.dataset.account));
       list.replaceChildren();
+      if (ownerConnection) ownerConnection.role = canManageOwners ? "primary" : "co-owner";
       updateUserAccountForm();
       byId("cloudOwnershipNote").hidden = !canManageOwners || !ids.length;
       for (const id of ids.filter(id => staffId.test(id))) {
         const role = roles?.[id] || "staff";
         const roleLabel = { primary: "Primary owner", "co-owner": "Co-owner", staff: "Staff" }[role];
-        const row = document.createElement("li");
-        row.append(id + " · " + roleLabel + " ");
+        const blocked = revokedIds?.includes(id);
+        const { row, details, actions } = createUserAccountRow(id, roleLabel, blocked ? "Blocked" : "Allowed", !blocked);
+        details.dataset.account = id;
+        details.open = expanded.has(id) || Boolean(pendingPins?.includes(id) && !blocked);
         const addAction = (label, action, message) => {
           const button = document.createElement("button");
           button.type = "button";
@@ -683,8 +694,27 @@ function doPost(e) {
             await refreshList(endpoint);
             result.textContent = message;
           });
-          row.append(button, " ");
+          actions.append(button);
         };
+        if (blocked) {
+          addAction("Restore access", "staff.restore", id + " can sign in again.");
+          list.append(row);
+          continue;
+        }
+        if (canManageOwners && role === "staff") {
+          const reset = document.createElement("button");
+          reset.type = "button";
+          reset.className = "mini-btn";
+          reset.textContent = "Set or reset PIN";
+          reset.onclick = () => {
+            byId("userAccountType").value = "online";
+            byId("onlineUserMethod").value = "pin";
+            byId("newLoginId").value = id;
+            updateUserAccountForm();
+            byId("assignedStaffPin").focus();
+          };
+          actions.append(reset);
+        }
         if (role === "staff") addAction("Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
         if (canManageOwners && role !== "primary") {
           if (role === "staff") addAction("Make Co-owner", "owner.promote", id + " is now a co-owner. They can sign in with their existing credentials.");
@@ -701,7 +731,7 @@ function doPost(e) {
             await refreshList(endpoint);
             result.textContent = "PIN approved. " + id + " can now sign in on any device.";
           });
-          row.append(approve, " ");
+          actions.append(approve);
         }
         list.append(row);
       }
