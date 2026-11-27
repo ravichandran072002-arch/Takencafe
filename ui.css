@@ -342,3 +342,14 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   .online-account-row summary { gap: 6px; }
   .online-account-row .user-access-status { padding-inline: 5px; font-size: 11px; }
 }
+
+#loginModeSwitch {
+  display: block;
+  min-height: 40px;
+  margin: 8px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

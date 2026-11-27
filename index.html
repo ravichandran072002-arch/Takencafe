@@ -657,26 +657,16 @@
         <p id="loginShopSub">Sign in to your shop</p>
       </div>
 
+      <select id="loginMode" aria-label="Sign-in mode" hidden>
+        <option value="staff">Online account</option>
+        <option value="local">This device’s account</option>
+      </select>
       <div class="field-group">
-        <label for="loginMode">Sign-in type</label>
-        <select id="loginMode">
-          <option value="local">Local account · this device</option>
-          <option value="staff">Online account · Owner, Co-owner or Staff</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>Login ID</label>
+        <label for="loginUserIdInput">Login ID</label>
         <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
       </div>
-      <div class="field-group" id="onlineLoginMethodRow" hidden>
-        <label for="onlineLoginMethod">Sign in with</label>
-        <select id="onlineLoginMethod">
-          <option value="password">Password</option>
-          <option value="pin">4-digit PIN</option>
-        </select>
-      </div>
       <div class="field-group">
-        <label id="loginPassLabel" for="loginPassInput">Password</label>
+        <label id="loginPassLabel" for="loginPassInput">Password or 4-digit PIN</label>
         <div class="login-password-row">
           <input type="password" id="loginPassInput" placeholder="Enter password" autocomplete="current-password" />
           <button type="button" class="mini-btn" id="loginShowPassword" aria-pressed="false" onclick="toggleLoginPassword()">Show</button>
@@ -709,8 +699,9 @@
       </section>
       <button class="btn btn-primary" id="appLoginButton" type="submit" disabled style="margin-top:6px;font-size:14px;padding:11px;">Login to RAVI</button>
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
-        Owner sign-in works offline. Online staff sign-in needs internet.
+        Use the password or PIN assigned to your account.
       </div>
+      <button type="button" id="loginModeSwitch" class="mini-btn">Use an account saved on this device</button>
     </form>
   </div>
 

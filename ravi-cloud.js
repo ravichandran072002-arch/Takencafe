@@ -543,6 +543,7 @@ function doPost(e) {
     byId("gdriveUrlInput").value = endpoint;
     safeStorageSet("tc_staff_shop", endpoint);
     safeStorageSet("tc_login_mode", "staff");
+    byId("loginMode").value = "staff";
     safeStorageSet("tc_settings", settings);
     staffConnection = { endpoint, id, credentials };
     clearTimeout(staffExpiry);
@@ -644,43 +645,57 @@ function doPost(e) {
     const mode = byId("loginMode");
     mode.value = safeStorageGet("tc_login_mode", DEFAULT_RAVI_ENDPOINT ? "staff" : "local") === "staff" ? "staff" : "local";
 
-    const method = byId("onlineLoginMethod");
     const setupPin = byId("setupPinOnLogin");
     const secret = byId("loginPassInput");
-    method.value = pinDevices().some(device => device.endpoint === staffShopLink()) ? "pin" : "password";
+    const loginId = byId("loginUserIdInput");
 
     function updateLoginMode() {
       const online = mode.value === "staff";
-      const pin = online && method.value === "pin";
+      const password = online && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
       byId("localLoginStaffName").hidden = online;
-      byId("onlineLoginMethodRow").hidden = !online;
-      byId("pinEnrollment").hidden = !online || pin;
-      byId("newPinFields").hidden = !online || pin || !setupPin.checked;
-      byId("loginPassLabel").textContent = pin ? "4-digit PIN" : "Password";
-      secret.inputMode = pin ? "numeric" : "text";
-      secret.placeholder = pin ? "Enter PIN" : "Enter password";
-      secret.autocomplete = pin ? "off" : "current-password";
-      if (pin) secret.maxLength = 4;
-      else secret.removeAttribute("maxlength");
+      byId("pinEnrollment").hidden = !password;
+      byId("newPinFields").hidden = !password || !setupPin.checked;
+      byId("loginPassLabel").textContent = online ? "Password or 4-digit PIN" : "Password";
+      secret.placeholder = online ? "Enter password or PIN" : "Enter password";
+      byId("loginModeSwitch").textContent = online ? "Use an account saved on this device" : "Use online sign-in";
+      byId("loginSyncHint").textContent = online ? "Use the password or PIN assigned to your account." : "Sign in to an account saved on this device.";
     }
 
     function clearLoginSecret() {
       secret.value = "";
+      if (secret.type === "text") toggleLoginPassword();
       byId("newLoginPin").value = "";
       byId("confirmLoginPin").value = "";
       secret.dispatchEvent(new Event("input"));
     }
 
+    function recallLoginId() {
+      const remembered = safeStorageGet("tc_last_login_ids", {});
+      loginId.value = remembered?.[mode.value] || "";
+    }
+
     mode.addEventListener("change", () => {
-      updateLoginMode();
       safeStorageSet("tc_login_mode", mode.value);
+      setupPin.checked = false;
       clearLoginSecret();
-    });
-    method.addEventListener("change", () => {
+      recallLoginId();
       updateLoginMode();
-      clearLoginSecret();
     });
-    setupPin.addEventListener("change", updateLoginMode);
+    byId("loginModeSwitch").addEventListener("click", () => {
+      mode.value = mode.value === "staff" ? "local" : "staff";
+      mode.dispatchEvent(new Event("change"));
+      (loginId.value ? secret : loginId).focus();
+    });
+    secret.addEventListener("input", () => {
+      const password = mode.value === "staff" && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
+      if (!password) setupPin.checked = false;
+      byId("pinEnrollment").hidden = !password;
+      byId("newPinFields").hidden = !password || !setupPin.checked;
+    });
+    setupPin.addEventListener("change", () => {
+      byId("newPinFields").hidden = !setupPin.checked;
+    });
+    recallLoginId();
     updateLoginMode();
 
     const logout = window.logoutApp;
@@ -698,7 +713,7 @@ function doPost(e) {
       ownerConnection = undefined;
       setupPin.checked = false;
       clearLoginSecret();
-      method.value = pinDevices().some(device => device.endpoint === staffShopLink()) ? "pin" : "password";
+      recallLoginId();
       updateLoginMode();
       logout();
       refreshOwnerPanel();

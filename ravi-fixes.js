@@ -106,7 +106,6 @@
   const loginButton = $r("appLoginButton");
   const passwordChange = $r("ownerPasswordChange");
   const loginHint = $r("loginSyncHint");
-  const loginMessage = loginHint.textContent.trim();
 
   function clearPasswordChange() {
     passwordChange.hidden = true;
@@ -123,11 +122,11 @@
     const pw = $r("loginPassInput").value.trim();
     const staff = cl($r("loginStaffNameInput").value.trim());
     if (!id || !pw) return showToast("Enter your Login ID and sign-in code.");
-    loginHint.textContent = loginMessage;
+    loginHint.textContent = "";
     if ($r("loginMode").value === "staff") {
       try {
         const endpoint = RaviCloud.staffShopLink();
-        const method = $r("onlineLoginMethod").value;
+        const method = /^\d{4}$/.test(pw) ? "pin" : "password";
         const enroll = method === "password" && $r("setupPinOnLogin").checked;
         const pin = $r("newLoginPin").value;
         if (enroll && (!/^\d{4}$/.test(pin) || pin !== $r("confirmLoginPin").value)) {
@@ -135,7 +134,7 @@
         }
         const result = await RaviCloud.staff(endpoint, id, pw, method);
         const sameLogin = () => $r("loginMode").value === "staff" && $r("loginUserIdInput").value.trim().toLowerCase() === id
-          && $r("loginPassInput").value.trim() === pw && $r("onlineLoginMethod").value === method && RaviCloud.staffShopLink() === endpoint;
+          && $r("loginPassInput").value.trim() === pw && RaviCloud.staffShopLink() === endpoint;
         if (!sameLogin()) return;
         if (enroll) await RaviCloud.enrollPin(endpoint, id, pw, pin);
         if (!sameLogin()) return;
@@ -192,7 +191,7 @@
       nextHash = await hashPw(pw);
     }
     if (!authUsers.includes(u) || u.passHash !== verifiedHash
-        || $r("loginUserIdInput").value.trim().toLowerCase() !== id || $r("loginPassInput").value.trim() !== pw) {
+        || $r("loginMode").value !== "local" || $r("loginUserIdInput").value.trim().toLowerCase() !== id || $r("loginPassInput").value.trim() !== pw) {
       clearPasswordChange();
       loginHint.textContent = "The account changed. Please sign in again.";
       return;
@@ -219,8 +218,13 @@
     sessionStorage.setItem("tc_logged_username", u.username);
     sessionStorage.setItem("tc_logged_role", u.role);
     sessionStorage.setItem("tc_logged_att_access", (priv || u.canViewAttendance) ? "1" : "0");
+    const mode = $r("loginMode").value;
+    const remembered = safeStorageGet("tc_last_login_ids", {});
+    safeStorageSet("tc_last_login_ids", { ...remembered, [mode]: u.username });
     $r("appLoginScreen").classList.add("hidden");
+    if ($r("loginPassInput").type === "text") toggleLoginPassword();
     $r("loginPassInput").value = "";
+    $r("loginPassInput").dispatchEvent(new Event("input"));
     applyRolePermissionsUI();
     if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
     else showToast(`✅ Welcome ${u.username} (${u.role})`);
