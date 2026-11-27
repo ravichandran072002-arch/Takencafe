@@ -654,7 +654,7 @@
       <div style="text-align:center;margin-bottom:14px;">
         <div class="r-monogram-lg">R</div>
         <h1 id="loginAppTitle">RAVI POS</h1>
-        <p id="loginShopSub">Sign in with your Login ID and PIN</p>
+        <p id="loginShopSub">Sign in</p>
       </div>
 
       <select id="loginMode" aria-label="Sign-in mode" hidden>
@@ -2065,6 +2065,12 @@
       button.setAttribute("aria-pressed", String(visible));
     }
 
+    function configuredShopName(shop) {
+      const name = typeof shop?.name === "string" ? shop.name.trim() : "";
+      const saved = shop?.shopNameConfigured ?? !["TAKEN CAFE", "MY SHOP"].includes(name.toUpperCase());
+      return saved ? name : "";
+    }
+
     function checkSessionLogin() {
       const uid = sessionStorage.getItem("tc_logged_uid");
       const account = authUsers.find(u => u.uid === uid);
@@ -2076,8 +2082,9 @@
         screen.classList.add("hidden");
         applyRolePermissionsUI();
       } else {
-        document.getElementById("loginAppTitle").textContent = "RAVI";
-        document.getElementById("loginShopSub").textContent = settings.name ? `${settings.name} • Sign in` : "Sign in to setup your Kadai";
+        document.getElementById("loginAppTitle").textContent = "RAVI POS";
+        const name = configuredShopName(settings);
+        document.getElementById("loginShopSub").textContent = name ? `${name} • Sign in` : "Sign in";
         document.getElementById("loginUserIdInput").value = "";
         screen.classList.remove("hidden");
       }
@@ -2194,7 +2201,7 @@
     function applySettingsToInputs() {
       const shopName = (settings.name || "TAKEN CAFE").trim();
       document.getElementById("headerSubInfo").textContent = shopName;
-      document.getElementById("setCafeName").value = settings.name || "";
+      document.getElementById("setCafeName").value = configuredShopName(settings);
       document.getElementById("setPhone").value = settings.phone || "";
       document.getElementById("setAddress").value = settings.address || "";
       document.getElementById("setUpi").value = settings.upi || "";
@@ -3309,7 +3316,7 @@
           attendance: attendance.filter(row => !row.cloud),
           ...(currentShopAppearance() ? { shopAppearance: currentShopAppearance() } : {}),
           ...(settings.billingPreferences ? { billingPreferences: settings.billingPreferences } : {}),
-          settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
+          settings: { name: settings.name, shopNameConfigured: Boolean(configuredShopName(settings)), phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
         if (saved.data) await mergeTwoWayData(saved.data);
@@ -3387,6 +3394,7 @@
       }
       if (remote.settings && (remote.settings.updatedAt || 0) > (settings.updatedAt || 0)) {
         settings.name = remote.settings.name || settings.name; settings.phone = remote.settings.phone || ""; settings.address = remote.settings.address || settings.address; settings.upi = remote.settings.upi || ""; settings.gstin = remote.settings.gstin || ""; settings.updatedAt = remote.settings.updatedAt;
+        settings.shopNameConfigured = Boolean(configuredShopName(remote.settings));
         safeStorageSet("tc_settings", settings); applySettingsToInputs();
       }
       applyRolePermissionsUI(); updateStaffUIState();
@@ -3399,9 +3407,11 @@
     }
 
     function saveSettings() {
+      const name = document.getElementById("setCafeName").value.trim();
       const updated = {
         ...settings,
-        name: document.getElementById("setCafeName").value.trim() || "MY SHOP",
+        name: name || "MY SHOP",
+        shopNameConfigured: Boolean(name),
         phone: document.getElementById("setPhone").value.trim(),
         address: document.getElementById("setAddress").value.trim(),
         upi: document.getElementById("setUpi").value.trim(),
