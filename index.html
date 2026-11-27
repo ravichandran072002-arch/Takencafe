@@ -2106,8 +2106,10 @@
       document.getElementById("onlineAccountCreate").hidden = !canCreateOnline;
       const method = document.getElementById("onlineUserMethod");
       const canAssignPin = canCreateOnline && cloud?.canAssignStaffPin();
-      method.options[1].disabled = !canAssignPin;
-      if (method.value === "pin" && !canAssignPin) method.value = "password";
+      method.querySelector('option[value="pin"]').disabled = !canAssignPin;
+      if (canAssignPin && method.dataset.canAssignPin !== "true") method.value = "pin";
+      if (!canAssignPin) method.value = "password";
+      method.dataset.canAssignPin = String(Boolean(canAssignPin));
       document.getElementById("staffPinSetup").hidden = !canCreateOnline || method.value !== "pin";
     }
 
