@@ -19,7 +19,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true });
 }
 
 function raviEqual(left, right) {
@@ -95,7 +95,11 @@ function raviStaffSync(req) {
   const bills = raviStaffRows(req.bills, req.id, "bills");
   const attendance = raviStaffRows(req.attendance, req.id, "attendance");
   const current = readBackup();
-  if (bills.length || attendance.length) writeBackup(raviMergeBackup(current, { bills, attendance }), false);
+  if (bills.length || attendance.length) {
+    const changes = { bills: bills.length > 0, attendance: attendance.length > 0 };
+    const incoming = { ...(changes.bills ? { bills } : {}), ...(changes.attendance ? { attendance } : {}) };
+    writeBackup(raviMergeBackup(current, incoming), false, current.empty ? undefined : changes);
+  }
   const whatsAppPdf = current.billingPreferences?.whatsAppPdf === true;
   const shop = current.settings;
   const receiptShop = whatsAppPdf && shop ? {
@@ -253,8 +257,12 @@ function doPost(e) {
           data.shopAppearance = { mode: preset.mode, palette: preset.palette, updatedAt: preset.updatedAt };
         }
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
-        const merged = raviMergeBackup(readBackup(), data);
-        writeBackup(merged, true);
+        const current = readBackup();
+        const merged = raviMergeBackup(current, data);
+        const fields = new Set([...Object.keys(current), ...Object.keys(merged)]);
+        fields.delete("syncedAt");
+        const changed = [...fields].some(field => JSON.stringify(current[field]) !== JSON.stringify(merged[field]));
+        if (changed || props.getProperty("RAVI_SHEET_DIRTY")) writeBackup(merged, true);
         return raviReply({ ok: true, data: merged });
       }
 
@@ -306,6 +314,12 @@ function doPost(e) {
         return raviReply({ ok: true });
       }
       if (role !== "primary" || !props.getProperty(key) || targetRole === "primary") return raviReply(bad);
+      if (req.action === "staff.password.reset") {
+        if (!/^[A-Za-z0-9_-]{24}$/.test(password || "")) return raviReply(bad);
+        props.setProperty(key, raviStaffDigest(staffPepper, target, password));
+        raviResetDevices(props, target);
+        return raviReply({ ok: true });
+      }
       if (req.action === "owner.promote") {
         props.setProperty("co-owner:" + target, "1");
         return raviReply({ ok: true });
@@ -338,12 +352,32 @@ function doPost(e) {
     return raw;
   }
 
+  const protocolCache = new Map();
+
   async function request(raw, action, fields) {
     const endpoint = endpointUrl(raw);
-    const probe = await fetchWithTimeout(endpoint + "?raviProtocol=1", { cache: "no-store" }, 8000);
-    const info = await probe.json().catch(() => null);
-    if (!probe.ok || info?.protocol !== protocol) {
-      throw Error("The owner must deploy the updated RAVI Apps Script for this link.");
+    let entry = protocolCache.get(endpoint);
+    if (!entry || entry.expires <= Date.now()) {
+      entry = { expires: Date.now() + 60000, promise: (async () => {
+        const probe = await fetchWithTimeout(endpoint + "?raviProtocol=1", { cache: "no-store" }, 8000);
+        const info = await probe.json().catch(() => null);
+        if (!probe.ok || info?.protocol !== protocol) {
+          throw Error("The owner must deploy the updated RAVI Apps Script for this link.");
+        }
+        return info;
+      })() };
+      protocolCache.set(endpoint, entry);
+    }
+    let info;
+    try {
+      info = await entry.promise;
+    } catch (error) {
+      if (protocolCache.get(endpoint) === entry) protocolCache.delete(endpoint);
+      throw error;
+    }
+    if (action === "staff.password.reset" && info.accountPasswordReset !== true) {
+      protocolCache.delete(endpoint);
+      throw Error("Deploy the latest RAVI Apps Script, then try the password reset again.");
     }
     if (action.startsWith("staff.pin.") && info.ownerStaffPin !== true) {
       throw Error("Deploy the Owner-managed Staff PIN update first.");
@@ -369,7 +403,7 @@ function doPost(e) {
       if (result?.reason === "owner-sets-pin") throw Error("Ask the primary Owner to set your Staff PIN.");
       if (result?.reason === "pin-invalid") throw Error("Incorrect 4-digit PIN.");
       if (result?.reason === "pin-reset") {
-        const error = Error("PIN locked or expired. Check with the Owner or use your existing account password.");
+        const error = Error("This PIN is unavailable for this account. If you’re an Owner or Co-owner, sign in with your online password.");
         error.revoked = true;
         throw error;
       }
@@ -412,14 +446,16 @@ function doPost(e) {
   }
 
   async function staff(endpoint, id, secret, method) {
-    if (!staffId.test(id)) throw Error("Invalid online Login ID.");
+    if (!staffId.test(id)) throw Error("Use the online Login ID exactly as your Owner created it, without spaces.");
     let credentials;
     if (method === "pin") {
       if (!/^\d{4}$/.test(secret)) throw Error("Enter your 4-digit PIN.");
       const deviceToken = deviceTokenFor(endpoint, id) || newPinToken(endpoint, id);
       credentials = { deviceToken, pin: secret };
     } else {
-      if (!/^[A-Za-z0-9_-]{24}$/.test(secret)) throw Error("Invalid online password.");
+      if (!/^[A-Za-z0-9_-]{24}$/.test(secret)) {
+        throw Error("Enter the generated online password. For a 4-digit code, select PIN instead.");
+      }
       credentials = { password: secret };
     }
     const result = await request(endpoint, "staff.login", { id, ...credentials });
@@ -546,8 +582,8 @@ function doPost(e) {
         updateWhatsAppBillingUI();
       }
       for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
-      safeStorageSet("tc_bills", bills);
-      safeStorageSet("tc_attendance", attendance);
+      if (billBatch.length) safeStorageSet("tc_bills", bills);
+      if (attendanceBatch.length) safeStorageSet("tc_attendance", attendance);
       if (!isOnlineOwner() && Array.isArray(remote.menu)) {
         const clean = value => String(value ?? "").replace(/[<>&"'`\\]/g, "");
         menu = remote.menu.filter(row => Number.isFinite(Number(row.id))).map(row => ({
@@ -728,9 +764,27 @@ function doPost(e) {
           };
           actions.append(reset);
         }
+        if (canManageOwners && role !== "primary") {
+          const resetPassword = document.createElement("button");
+          resetPassword.type = "button";
+          resetPassword.className = "mini-btn";
+          resetPassword.textContent = "Reset online password";
+          run(resetPassword, async () => {
+            if (!confirm("Generate a new online password for " + id + "? Their old password and device-enrolled PIN will stop working.")) return;
+            if (shopLink() !== endpoint) throw Error("Refresh the staff list for this shop first.");
+            const password = createPassword();
+            await owner(endpoint, "staff.password.reset", { id, password });
+            if (!isOwner() || endpoint !== shopLink()) return;
+            passwordField.value = password;
+            passwordField.hidden = false;
+            result.textContent = "New password for " + id + ". Share it privately and select Password on the login screen.";
+            passwordField.scrollIntoView({ block: "nearest" });
+          });
+          actions.append(resetPassword);
+        }
         if (role === "staff") addAction("Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
         if (canManageOwners && role !== "primary") {
-          if (role === "staff") addAction("Make Co-owner", "owner.promote", id + " is now a co-owner. They can sign in with their existing credentials.");
+          if (role === "staff") addAction("Make Co-owner", "owner.promote", id + " is now a co-owner. Use their online password for Owner access, or reset it here.");
           else addAction("Remove Co-owner access", "owner.demote", id + " is now Staff.");
           addAction("Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
         }

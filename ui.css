@@ -286,8 +286,9 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 .staff-management .user-access-status.allowed { color: var(--green); background: var(--green-soft); border-color: transparent; }
 .staff-management .user-row-actions .mini-btn { padding-inline: 10px; min-height: 34px; }
 .staff-management #staffAccountSearch { margin-top: 12px; background: var(--bg); }
-@media (min-width: 1180px) {
-  .staff-management-grid { grid-template-columns: minmax(280px, .84fr) minmax(0, 1.16fr); }
+.staff-management { container-type: inline-size; }
+@container (min-width: 720px) {
+  .staff-management-grid { grid-template-columns: minmax(260px, .84fr) minmax(0, 1.16fr); }
 }
 @media (max-width: 440px) {
   .staff-management-grid { gap: 12px; }
@@ -302,4 +303,28 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   margin: 8px 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+
+#localAccounts.user-search-no-match { display: none; }
+
+.login-screen {
+  background: radial-gradient(ellipse at 50% 0, var(--roast), var(--espresso) 75%);
+}
+.login-box {
+  width: min(100%, 420px);
+  padding: clamp(20px, 5vw, 34px);
+  border-radius: 18px;
+}
+#loginAppTitle { margin: 8px 0 2px; font-size: 24px; letter-spacing: -.025em; }
+#loginShopSub { margin: 0; color: var(--muted); font-size: 13px; }
+.login-box .field-group { margin-bottom: 14px; }
+.login-box input, .login-box select { min-height: 46px; }
+.login-box label { font-size: 13px; }
+.login-box .login-password-row button { padding-inline: 12px; }
+#loginSyncHint:not(:empty) { line-height: 1.45; }
+
+@media (min-width: 841px) and (max-width: 1099px) {
+  #tab-settings.active { display: block; }
+  .settings-nav { flex-direction: row; }
 }

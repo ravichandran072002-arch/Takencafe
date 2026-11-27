@@ -26,7 +26,7 @@ function writeSheetTab(ss, title, rows) {
   sh.setFrozenRows(1);
 }
 
-function updateLiveSheetFromBody(folder, body) {
+function updateLiveSheetFromBody(folder, body, changes) {
   const ss = getOrCreateSpreadsheet(folder);
   const bills = Array.isArray(body.bills) ? body.bills : [];
   const expenses = Array.isArray(body.expenses) ? body.expenses : [];
@@ -52,11 +52,11 @@ function updateLiveSheetFromBody(folder, body) {
   expenses.forEach(e => expRows.push([e.date, e.cat, e.note, Number(e.amount || 0)]));
   const attRows = [["Employee", "Date", "In Time", "Out Time", "Duration", "Device"]];
   attendance.forEach(a => attRows.push([a.name, a.date, a.inTime, a.outTime || "Active", a.duration || "-", a.device || ""]));
-  writeSheetTab(ss, "Day_Wise_Summary", dayRows);
-  writeSheetTab(ss, "Bills_Register", billRows);
-  writeSheetTab(ss, "Expenses", expRows);
-  writeSheetTab(ss, "Staff_Attendance", attRows);
-  const defSh = ss.getSheetByName("Sheet1");
+  if (!changes || changes.bills) writeSheetTab(ss, "Day_Wise_Summary", dayRows);
+  if (!changes || changes.bills) writeSheetTab(ss, "Bills_Register", billRows);
+  if (!changes) writeSheetTab(ss, "Expenses", expRows);
+  if (!changes || changes.attendance) writeSheetTab(ss, "Staff_Attendance", attRows);
+  const defSh = !changes && ss.getSheetByName("Sheet1");
   if (defSh && ss.getSheets().length > 1) ss.deleteSheet(defSh);
 }
 
@@ -70,16 +70,20 @@ function readBackup() {
   return data;
 }
 
-function writeBackup(body, archive) {
+function writeBackup(body, archive, changes) {
   const folder = getOrCreateFolder();
-  const jsonStr = JSON.stringify(body, null, 2);
+  const properties = PropertiesService.getScriptProperties();
+  if (changes && properties.getProperty("RAVI_SHEET_DIRTY")) changes = undefined;
+  properties.setProperty("RAVI_SHEET_DIRTY", "1");
+  const jsonStr = JSON.stringify(body);
   const liveFiles = folder.getFilesByName(LIVE_FILE);
   if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);
   if (archive && body.backupFileName) {
     const bFiles = folder.getFilesByName(body.backupFileName);
     if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);
   }
-  updateLiveSheetFromBody(folder, body);
+  updateLiveSheetFromBody(folder, body, changes);
+  properties.deleteProperty("RAVI_SHEET_DIRTY");
 }
 
 
@@ -90,7 +94,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true });
 }
 
 function raviEqual(left, right) {
@@ -166,7 +170,11 @@ function raviStaffSync(req) {
   const bills = raviStaffRows(req.bills, req.id, "bills");
   const attendance = raviStaffRows(req.attendance, req.id, "attendance");
   const current = readBackup();
-  if (bills.length || attendance.length) writeBackup(raviMergeBackup(current, { bills, attendance }), false);
+  if (bills.length || attendance.length) {
+    const changes = { bills: bills.length > 0, attendance: attendance.length > 0 };
+    const incoming = { ...(changes.bills ? { bills } : {}), ...(changes.attendance ? { attendance } : {}) };
+    writeBackup(raviMergeBackup(current, incoming), false, current.empty ? undefined : changes);
+  }
   const whatsAppPdf = current.billingPreferences?.whatsAppPdf === true;
   const shop = current.settings;
   const receiptShop = whatsAppPdf && shop ? {
@@ -324,8 +332,12 @@ function doPost(e) {
           data.shopAppearance = { mode: preset.mode, palette: preset.palette, updatedAt: preset.updatedAt };
         }
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
-        const merged = raviMergeBackup(readBackup(), data);
-        writeBackup(merged, true);
+        const current = readBackup();
+        const merged = raviMergeBackup(current, data);
+        const fields = new Set([...Object.keys(current), ...Object.keys(merged)]);
+        fields.delete("syncedAt");
+        const changed = [...fields].some(field => JSON.stringify(current[field]) !== JSON.stringify(merged[field]));
+        if (changed || props.getProperty("RAVI_SHEET_DIRTY")) writeBackup(merged, true);
         return raviReply({ ok: true, data: merged });
       }
 
@@ -377,6 +389,12 @@ function doPost(e) {
         return raviReply({ ok: true });
       }
       if (role !== "primary" || !props.getProperty(key) || targetRole === "primary") return raviReply(bad);
+      if (req.action === "staff.password.reset") {
+        if (!/^[A-Za-z0-9_-]{24}$/.test(password || "")) return raviReply(bad);
+        props.setProperty(key, raviStaffDigest(staffPepper, target, password));
+        raviResetDevices(props, target);
+        return raviReply({ ok: true });
+      }
       if (req.action === "owner.promote") {
         props.setProperty("co-owner:" + target, "1");
         return raviReply({ ok: true });

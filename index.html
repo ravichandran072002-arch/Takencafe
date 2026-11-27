@@ -653,15 +653,15 @@
     <form class="login-box" id="appLoginForm" onsubmit="event.preventDefault()">
       <div style="text-align:center;margin-bottom:14px;">
         <div class="r-monogram-lg">R</div>
-        <strong style="font-size:19px;display:block;letter-spacing:0.6px;" id="loginAppTitle">RAVI</strong>
-        <small style="color:var(--muted);" id="loginShopSub">Sign in to manage your shop</small>
+        <h1 id="loginAppTitle">RAVI POS</h1>
+        <p id="loginShopSub">Sign in to your shop</p>
       </div>
 
       <div class="field-group">
         <label for="loginMode">Sign-in type</label>
         <select id="loginMode">
-          <option value="local">Owner / this device</option>
-          <option value="staff">Staff / online</option>
+          <option value="local">Local account · this device</option>
+          <option value="staff">Online account · Owner, Co-owner or Staff</option>
         </select>
       </div>
       <div class="field-group">
@@ -1090,7 +1090,7 @@
                 </div>
                 <div class="field-group">
                   <label for="newLoginId">Login ID</label>
-                  <input type="text" id="newLoginId" placeholder="e.g. staff01" autocomplete="off" />
+                  <input type="text" id="newLoginId" placeholder="e.g. manager02" autocomplete="off" aria-describedby="onlineLoginIdRules" />
                 </div>
               </div>
               <div class="user-fields-grid" id="localUserFields">
@@ -1115,7 +1115,8 @@
                 </div>
               </div>
               <div class="cloud-settings-fields" id="onlineUserFields" hidden>
-                <label for="onlineUserMethod">Online Staff sign-in</label>
+                <p id="onlineLoginIdRules">Online IDs use 3–32 letters, numbers, dots, dashes or underscores.</p>
+            <label for="onlineUserMethod">Online Staff sign-in</label>
                 <select id="onlineUserMethod" onchange="updateUserAccountForm()">
                   <option value="password">Generate password</option>
                   <option value="pin">Set 4-digit PIN</option>
@@ -1587,7 +1588,7 @@
       '  sh.setFrozenRows(1);',
       '}',
       '',
-      'function updateLiveSheetFromBody(folder, body) {',
+      'function updateLiveSheetFromBody(folder, body, changes) {',
       '  const ss = getOrCreateSpreadsheet(folder);',
       '  const bills = Array.isArray(body.bills) ? body.bills : [];',
       '  const expenses = Array.isArray(body.expenses) ? body.expenses : [];',
@@ -1613,11 +1614,11 @@
       '  expenses.forEach(e => expRows.push([e.date, e.cat, e.note, Number(e.amount || 0)]));',
       '  const attRows = [["Employee", "Date", "In Time", "Out Time", "Duration", "Device"]];',
       '  attendance.forEach(a => attRows.push([a.name, a.date, a.inTime, a.outTime || "Active", a.duration || "-", a.device || ""]));',
-      '  writeSheetTab(ss, "Day_Wise_Summary", dayRows);',
-      '  writeSheetTab(ss, "Bills_Register", billRows);',
-      '  writeSheetTab(ss, "Expenses", expRows);',
-      '  writeSheetTab(ss, "Staff_Attendance", attRows);',
-      '  const defSh = ss.getSheetByName("Sheet1");',
+      '  if (!changes || changes.bills) writeSheetTab(ss, "Day_Wise_Summary", dayRows);',
+      '  if (!changes || changes.bills) writeSheetTab(ss, "Bills_Register", billRows);',
+      '  if (!changes) writeSheetTab(ss, "Expenses", expRows);',
+      '  if (!changes || changes.attendance) writeSheetTab(ss, "Staff_Attendance", attRows);',
+      '  const defSh = !changes && ss.getSheetByName("Sheet1");',
       '  if (defSh && ss.getSheets().length > 1) ss.deleteSheet(defSh);',
       '}',
       '',
@@ -1631,16 +1632,20 @@
       '  return data;',
       '}',
       '',
-      'function writeBackup(body, archive) {',
+      'function writeBackup(body, archive, changes) {',
       '  const folder = getOrCreateFolder();',
-      '  const jsonStr = JSON.stringify(body, null, 2);',
+      '  const properties = PropertiesService.getScriptProperties();',
+      '  if (changes && properties.getProperty("RAVI_SHEET_DIRTY")) changes = undefined;',
+      '  properties.setProperty("RAVI_SHEET_DIRTY", "1");',
+      '  const jsonStr = JSON.stringify(body);',
       '  const liveFiles = folder.getFilesByName(LIVE_FILE);',
       '  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);',
       '  if (archive && body.backupFileName) {',
       '    const bFiles = folder.getFilesByName(body.backupFileName);',
       '    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else folder.createFile(body.backupFileName, jsonStr, MimeType.PLAIN_TEXT);',
       '  }',
-      '  updateLiveSheetFromBody(folder, body);',
+      '  updateLiveSheetFromBody(folder, body, changes);',
+      '  properties.deleteProperty("RAVI_SHEET_DIRTY");',
       '}'
     ].join("\n");
 
@@ -2074,6 +2079,9 @@
       for (const row of document.querySelectorAll("#userAccessControlCard [data-login-id]")) {
         row.hidden = !row.dataset.loginId.includes(search);
         if (!row.hidden && !row.closest(".user-account-list").hidden) matched = true;
+      }
+      for (const section of document.querySelectorAll("#userAccessControlCard .user-account-list")) {
+        section.classList.toggle("user-search-no-match", Boolean(search) && !section.querySelector("[data-login-id]:not([hidden])"));
       }
       document.getElementById("staffSearchEmpty").hidden = !search || matched;
     }
