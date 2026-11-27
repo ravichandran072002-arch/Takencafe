@@ -463,6 +463,8 @@ function doPost(e) {
       byId("cloudStaffPassword").value = "";
       byId("cloudStaffPassword").hidden = true;
       byId("cloudStaffList").replaceChildren();
+      byId("staffAccountSearch").value = "";
+      filterStaffAccounts();
       byId("assignedStaffPin").value = "";
       byId("cloudStaffResult").textContent = "";
     }
@@ -735,6 +737,7 @@ function doPost(e) {
         }
         list.append(row);
       }
+      filterStaffAccounts();
     }
 
     run(byId("generateCloudKeys"), () => {

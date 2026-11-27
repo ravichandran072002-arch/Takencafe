@@ -1073,72 +1073,80 @@
         </div>
       </div>
 
-      <div class="card cloud-settings-card" id="userAccessControlCard" data-settings-panel="users" hidden>
+      <div class="card cloud-settings-card staff-management" id="userAccessControlCard" data-settings-panel="users" hidden>
         <h2>Staff &amp; Login Management</h2>
-        <div class="cloud-settings-fields" id="addUserFields">
-          <div class="user-fields-grid">
-            <div class="field-group">
-              <label for="userAccountType">Account type</label>
-              <select id="userAccountType" onchange="updateUserAccountForm()">
-                <option value="local">Local · this device</option>
-                <option value="online">Online · shared with shop devices</option>
-              </select>
+        <div class="staff-management-grid">
+          <section class="staff-management-panel" aria-labelledby="staff-create-title">
+            <h3 id="staff-create-title">Create login ID</h3>
+            <div class="cloud-settings-fields" id="addUserFields">
+              <div class="user-fields-grid">
+                <div class="field-group">
+                  <label for="userAccountType">Account type</label>
+                  <select id="userAccountType" onchange="updateUserAccountForm()">
+                    <option value="local">Local · this device</option>
+                    <option value="online">Online · shared with shop devices</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label for="newLoginId">Login ID</label>
+                  <input type="text" id="newLoginId" placeholder="e.g. staff01" autocomplete="off" />
+                </div>
+              </div>
+              <div class="user-fields-grid" id="localUserFields">
+                <div class="field-group">
+                  <label for="newLoginPass">Password (at least 8 characters)</label>
+                  <input type="password" id="newLoginPass" autocomplete="new-password" />
+                </div>
+                <div class="field-group" style="margin-bottom:0;">
+                  <label for="newLoginRole">Role</label>
+                  <select id="newLoginRole" onchange="onNewRoleChange()">
+                    <option value="Staff">Staff</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Owner">Owner</option>
+                  </select>
+                </div>
+                <div class="field-group" style="margin-bottom:0;">
+                  <label for="newLoginAttAccess">Attendance Access</label>
+                  <select id="newLoginAttAccess">
+                    <option value="0">🔒 Restricted (No)</option>
+                    <option value="1">✅ Allowed (Yes)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="cloud-settings-fields" id="onlineUserFields" hidden>
+                <label for="onlineUserMethod">Online Staff sign-in</label>
+                <select id="onlineUserMethod" onchange="updateUserAccountForm()">
+                  <option value="password">Generate password</option>
+                  <option value="pin">Set 4-digit PIN</option>
+                </select>
+                <div id="staffPinSetup" class="cloud-settings-fields" hidden>
+                  <label for="assignedStaffPin">Password / PIN</label>
+                  <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Enter 4-digit PIN" />
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary" id="addUserButton">+ Create Login ID</button>
+              <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
+              <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
             </div>
-            <div class="field-group">
-              <label for="newLoginId">Login ID</label>
-              <input type="text" id="newLoginId" placeholder="e.g. staff01" autocomplete="off" />
-            </div>
-          </div>
-          <div class="user-fields-grid" id="localUserFields">
-            <div class="field-group">
-              <label for="newLoginPass">Password (at least 8 characters)</label>
-              <input type="password" id="newLoginPass" autocomplete="new-password" />
-            </div>
-            <div class="field-group" style="margin-bottom:0;">
-              <label for="newLoginRole">Role</label>
-              <select id="newLoginRole" onchange="onNewRoleChange()">
-                <option value="Staff">Staff</option>
-                <option value="Manager">Manager</option>
-                <option value="Owner">Owner</option>
-              </select>
-            </div>
-            <div class="field-group" style="margin-bottom:0;">
-              <label for="newLoginAttAccess">Attendance Access</label>
-              <select id="newLoginAttAccess">
-                <option value="0">🔒 Restricted (No)</option>
-                <option value="1">✅ Allowed (Yes)</option>
-              </select>
-            </div>
-          </div>
-          <div class="cloud-settings-fields" id="onlineUserFields" hidden>
-            <label for="onlineUserMethod">Online Staff sign-in</label>
-            <select id="onlineUserMethod" onchange="updateUserAccountForm()">
-              <option value="password">Generate password</option>
-              <option value="pin">Set 4-digit PIN</option>
-            </select>
-            <div id="staffPinSetup" class="cloud-settings-fields" hidden>
-              <label for="assignedStaffPin">Password / PIN</label>
-              <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Enter 4-digit PIN" />
-            </div>
-          </div>
-          <button type="button" class="btn btn-primary" id="addUserButton">+ Create Login ID</button>
-          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
-          <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
+          </section>
+          <section class="staff-management-panel" aria-labelledby="staff-accounts-title">
+            <h3 id="staff-accounts-title">Manage existing users</h3>
+            <input id="staffAccountSearch" type="search" placeholder="Search login IDs" aria-label="Search login IDs" oninput="filterStaffAccounts()" />
+            <section class="user-account-list" id="localAccounts">
+              <h3>Local accounts</h3>
+              <ul id="loginUsersTable" class="user-list"></ul>
+            </section>
+            <section class="user-account-list" id="cloudStaffPanel" hidden>
+              <div class="cloud-settings-heading">
+                <h3>Online accounts</h3>
+                <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
+              </div>
+              <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
+              <ul id="cloudStaffList" class="user-list"></ul>
+            </section>
+            <p id="staffSearchEmpty" role="status" hidden>No matching login IDs.</p>
+          </section>
         </div>
-
-        <h3 class="manage-users-title">Manage existing users</h3>
-        <section class="user-account-list" id="localAccounts">
-          <h3>Local accounts</h3>
-          <ul id="loginUsersTable" class="user-list"></ul>
-        </section>
-        <section class="user-account-list" id="cloudStaffPanel" hidden>
-          <div class="cloud-settings-heading">
-            <h3>Online accounts</h3>
-            <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
-          </div>
-          <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
-          <ul id="cloudStaffList" class="user-list"></ul>
-        </section>
       </div>
 
       <div class="card cloud-settings-card" data-settings-panel="sync">
@@ -2016,8 +2024,19 @@
       setTimeout(() => input.focus(), 80);
     }
 
+    function filterStaffAccounts() {
+      const search = document.getElementById("staffAccountSearch").value.trim().toLowerCase();
+      let matched = false;
+      for (const row of document.querySelectorAll("#userAccessControlCard [data-login-id]")) {
+        row.hidden = !row.dataset.loginId.includes(search);
+        if (!row.hidden && !row.closest(".user-account-list").hidden) matched = true;
+      }
+      document.getElementById("staffSearchEmpty").hidden = !search || matched;
+    }
+
     function createUserAccountRow(username, role, status, allowed) {
       const row = document.createElement("li");
+      row.dataset.loginId = username.toLowerCase();
       const details = document.createElement("details");
       const summary = document.createElement("summary");
       const identity = document.createElement("span");

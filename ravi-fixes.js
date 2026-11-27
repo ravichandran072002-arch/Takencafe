@@ -308,6 +308,7 @@
       }
       list.append(row);
     }
+    filterStaffAccounts();
   };
 
   /* ---------- 2. Delete PIN (hashed, owner-set, no hardcoded value) ---------- */

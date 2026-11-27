@@ -216,7 +216,6 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 .user-fields-grid .field-group { margin: 0; }
 .user-fields-grid[hidden], #localAccounts[hidden], #cloudStaffPanel[hidden], #userAccessControlCard[hidden] { display: none; }
 .user-account-list { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
-.user-account-list .table-wrap { margin-top: 8px; }
 @media (max-width: 540px) {
   .user-fields-grid { grid-template-columns: minmax(0, 1fr); }
 }
@@ -224,7 +223,6 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 #addUserFields .user-fields-grid { grid-template-columns: minmax(0, 1fr); }
 #addUserFields input:not([readonly]) { border-radius: 999px; padding-inline: 17px; }
 #addUserButton { min-height: 50px; margin-top: 4px; }
-.manage-users-title { margin-top: 20px !important; }
 .user-account-list { margin-top: 10px; }
 .user-list, #cloudStaffList { list-style: none; padding: 0; margin: 8px 0 0; }
 .user-list li { margin-block: 8px; }
@@ -246,3 +244,49 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 .user-access-status.allowed { color: var(--green); }
 .user-row-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 12px; }
 .user-row-actions .mini-btn { min-height: 36px; }
+
+#userAccessControlCard.staff-management {
+  padding: clamp(16px, 2.7vw, 28px);
+  max-width: 1040px;
+  background: linear-gradient(145deg, var(--card), var(--bg));
+}
+.staff-management > h2 { font-size: clamp(21px, 2.5vw, 29px); letter-spacing: -.035em; margin: 0 0 22px; }
+.staff-management-grid { display: grid; gap: 16px; align-items: start; }
+.staff-management-panel {
+  min-width: 0; background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px;
+}
+.staff-management-panel h3 { font-size: 16px; letter-spacing: -.01em; }
+.staff-management #addUserFields { gap: 13px; margin-top: 15px; }
+.staff-management #addUserFields input:not([readonly]), .staff-management #addUserFields select {
+  border-radius: 10px; background: var(--bg); min-height: 44px; padding-inline: 12px;
+}
+.staff-management #addUserFields .field-group label { display: block; margin-bottom: 5px; }
+.staff-management #addUserFields .user-fields-grid { gap: 13px; }
+.staff-management #onlineUserFields, .staff-management #staffPinSetup { margin-top: 0; gap: 6px; }
+.staff-management #staffPinSetup { margin-top: 6px; }
+.staff-management #addUserButton { margin-top: 1px; box-shadow: none; }
+.staff-management .user-account-list { margin-top: 15px; padding-top: 13px; }
+.staff-management .user-account-list h3 { font-size: 13px; }
+.staff-management .user-account-list .btn { min-height: 36px; font-size: 12px; padding-inline: 10px; }
+.staff-management #cloudOwnershipNote { margin-top: 7px; }
+.staff-management .user-list details { border: 1px solid var(--border); border-radius: 12px; }
+.staff-management .user-list details[open] { border-color: var(--amber); }
+.staff-management .user-access-status {
+  border: 1px solid var(--border); background: var(--th-bg);
+  border-radius: 999px; padding: 4px 8px; white-space: nowrap; font-weight: 600;
+}
+.staff-management .user-access-status.allowed { color: var(--green); background: var(--green-soft); border-color: transparent; }
+.staff-management .user-row-actions .mini-btn { padding-inline: 10px; min-height: 34px; }
+.staff-management #staffAccountSearch { margin-top: 12px; background: var(--bg); }
+@media (min-width: 1180px) {
+  .staff-management-grid { grid-template-columns: minmax(280px, .84fr) minmax(0, 1.16fr); }
+}
+@media (max-width: 440px) {
+  .staff-management-grid { gap: 12px; }
+  .staff-management-panel { padding: 13px; }
+  .staff-management .user-access-status { white-space: normal; }
+}
+
+.staff-management #staffSearchEmpty { margin-top: 12px; }
+.staff-management .user-list li[hidden] { display: none; }
