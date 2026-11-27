@@ -1033,6 +1033,22 @@
           <button class="mini-btn del" onclick="logoutApp()">🚪 Lock / Logout</button>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;" id="currentUserBadgeText">Logged in</div>
+        <details id="deletePinSettings" style="margin-top:12px;" hidden>
+          <summary>Bill Delete PIN</summary>
+          <form id="deletePinForm" style="display:grid;gap:8px;max-width:360px;margin-top:8px;">
+            <label id="deletePinCurrentLabel">Current PIN
+              <input id="deletePinCurrent" type="password" inputmode="numeric" autocomplete="off" />
+            </label>
+            <label>New 4-digit PIN
+              <input id="deletePinNew" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" required />
+            </label>
+            <label>Confirm new PIN
+              <input id="deletePinRepeat" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" required />
+            </label>
+            <button type="submit" class="btn btn-green">Save Delete PIN</button>
+            <div id="deletePinStatus" role="status"></div>
+          </form>
+        </details>
       </div>
 
       <div class="card" data-settings-panel="appearance" id="appearancePanel">

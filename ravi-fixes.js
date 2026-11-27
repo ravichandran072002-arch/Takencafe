@@ -318,6 +318,7 @@
       const hash = await pinHash(entered);
       if (!stillConfirming() || localStorage.getItem(PIN_KEY)) return;
       localStorage.setItem(PIN_KEY, hash);
+      updatePinSettings();
       $r("billDeletePinInput").value = "";
       return showToast("✅ Delete PIN saved — enter it again to delete");
     }
@@ -351,14 +352,70 @@
     triggerBackgroundSync();
   };
 
-  async function changePin() {
-    if (getLoggedAccount().role !== "Owner") return showToast("Owner mattum dhaan PIN maatha mudiyum");
-    const stored = localStorage.getItem(PIN_KEY);
-    if (stored) { const cur = prompt("Current Delete PIN:"); if (!cur || !(await verifyPw(cur.trim(), stored, "pin"))) return showToast("❌ Wrong current PIN"); }
-    const np = prompt("New 4-digit Delete PIN:");
-    if (!np || !deletePinPattern.test(np.trim())) return showToast("PIN must be exactly 4 digits");
-    localStorage.setItem(PIN_KEY, await pinHash(np.trim())); showToast("✅ Delete PIN updated");
+  const pinSettings = $r("deletePinSettings");
+  const pinForm = $r("deletePinForm");
+  const currentPinInput = $r("deletePinCurrent");
+  const pinStatus = $r("deletePinStatus");
+  const isPinOwner = () => sessionStorage.getItem("tc_session_logged") === "1" && getLoggedAccount().role === "Owner";
+
+  function updatePinSettings() {
+    pinSettings.hidden = !isPinOwner();
+    const hasPin = Boolean(localStorage.getItem(PIN_KEY));
+    $r("deletePinCurrentLabel").hidden = !hasPin;
+    currentPinInput.required = hasPin;
   }
+
+  pinSettings.addEventListener("toggle", () => {
+    if (pinSettings.open) {
+      updatePinSettings();
+    } else {
+      pinForm.reset();
+      pinStatus.textContent = "";
+    }
+  });
+
+  pinForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const save = pinForm.querySelector("button");
+    if (save.disabled || !isPinOwner()) return;
+    const sessionUid = sessionStorage.getItem("tc_logged_uid");
+    const current = currentPinInput.value.trim();
+    const next = $r("deletePinNew").value.trim();
+    if (!deletePinPattern.test(next)) {
+      pinStatus.textContent = "Enter exactly 4 digits.";
+      return;
+    }
+    if (next !== $r("deletePinRepeat").value.trim()) {
+      pinStatus.textContent = "The new PINs do not match.";
+      return;
+    }
+    save.disabled = true;
+    pinStatus.textContent = "Saving…";
+    try {
+      const stored = localStorage.getItem(PIN_KEY);
+      if (stored && !(await verifyPw(current, stored, "pin"))) {
+        pinStatus.textContent = "Current PIN is incorrect.";
+        currentPinInput.focus();
+        return;
+      }
+      const hash = await pinHash(next);
+      if (!isPinOwner() || sessionStorage.getItem("tc_logged_uid") !== sessionUid) return;
+      if (localStorage.getItem(PIN_KEY) !== stored) {
+        updatePinSettings();
+        pinStatus.textContent = "The PIN changed. Enter the current PIN and try again.";
+        return;
+      }
+      localStorage.setItem(PIN_KEY, hash);
+      pinForm.reset();
+      updatePinSettings();
+      pinStatus.textContent = "Delete PIN saved on this device.";
+    } catch (error) {
+      console.error("Could not save Delete PIN", error);
+      pinStatus.textContent = "Could not save the PIN. Please try again.";
+    } finally {
+      save.disabled = false;
+    }
+  });
 
   /* ---------- 5. Unique bill numbers across devices ---------- */
   function devCode() {
@@ -405,20 +462,17 @@
   });
 
   /* ---------- Startup ---------- */
-  function injectButtons() {
-    const host = $r("currentUserBadgeText") && $r("currentUserBadgeText").parentElement;
-    if (!host || $r("raviSecRow")) return;
-    const d = document.createElement("div");
-    d.id = "raviSecRow"; d.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;";
-    d.innerHTML = '<button class="mini-btn" id="raviPinBtn">🔑 Delete PIN</button>';
-    host.appendChild(d);
-    $r("raviPinBtn").onclick = changePin;
-  }
   sanitizeAll(); saveAll();
   migrateUsers().then(() => { renderLoginUsersTable(); renderCategories(); renderMenu(); }).catch(e => console.error('Login initialization failed', e));
-  injectButtons();
-  const origApply = window.applySettingsToInputs;
-  window.applySettingsToInputs = function () { origApply(); injectButtons(); };
+  const applyRolePermissions = window.applyRolePermissionsUI;
+  window.applyRolePermissionsUI = function () {
+    applyRolePermissions();
+    pinForm.reset();
+    pinStatus.textContent = "";
+    pinSettings.open = false;
+    updatePinSettings();
+  };
+  updatePinSettings();
   const sync = window.syncNowBothWays;
   window.syncNowBothWays = async function (notify) {
     try {
