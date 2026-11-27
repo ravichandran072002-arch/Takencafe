@@ -99,13 +99,58 @@ function writeBackup(body, archive, changes) {
   if (archive && body.backupFileName) {
     const exportFolder = body.exportSettings ? DriveApp.getFolderById(body.exportSettings.folderId) : folder;
     const archiveName = body.exportSettings ? String(body.settings?.name || "RAVI POS").slice(0,60) + "_" + body.backupFileName.slice(10) : body.backupFileName;
+    const archiveData = body.exportSettings ? JSON.stringify({ ...body, shopEntries: (body.shopEntries || []).filter(row => row.kind !== "message") }) : jsonStr;
     const bFiles = exportFolder.getFilesByName(archiveName);
-    if (bFiles.hasNext()) bFiles.next().setContent(jsonStr); else exportFolder.createFile(archiveName, jsonStr, MimeType.PLAIN_TEXT);
+    if (bFiles.hasNext()) bFiles.next().setContent(archiveData); else exportFolder.createFile(archiveName, archiveData, MimeType.PLAIN_TEXT);
   }
   updateLiveSheetFromBody(folder, body, changes);
   properties.deleteProperty("RAVI_SHEET_DIRTY");
+  if (body.exportSettings?.autoExcel) properties.setProperty("RAVI_XLSX_REVISION", Utilities.getUuid());
 }
 
+
+function raviExportWorkbook(current, props) {
+  const folder = current.exportSettings ? DriveApp.getFolderById(current.exportSettings.folderId) : getOrCreateFolder();
+  const shopName = String(current.settings?.name || "RAVI POS").trim().slice(0, 60) || "RAVI POS";
+  const filename = shopName + " · RAVI Reports.xlsx";
+  const workbook = SpreadsheetApp.create(shopName + " · RAVI export");
+  const temporaryFile = DriveApp.getFileById(workbook.getId());
+  try {
+    updateLiveSheetFromBody(folder, current, undefined, workbook);
+    SpreadsheetApp.flush();
+    const response = UrlFetchApp.fetch("https://docs.google.com/spreadsheets/d/" + workbook.getId() + "/export?format=xlsx", {
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }
+    });
+    const blob = response.getBlob().setName(filename);
+    if (blob.getBytes().slice(0, 2).join(",") !== "80,75") throw Error("Invalid workbook");
+    const key = "RAVI_XLSX_" + folder.getId();
+    const previousId = props.getProperty(key);
+    const created = folder.createFile(blob);
+    props.setProperty(key, created.getId());
+    if (previousId) {
+      try { DriveApp.getFileById(previousId).setTrashed(true); } catch (_) {}
+    }
+    return filename;
+  } finally {
+    temporaryFile.setTrashed(true);
+  }
+}
+
+function raviRefreshExcel() {
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1)) return;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const revision = props.getProperty("RAVI_XLSX_REVISION");
+    if (!revision || revision === props.getProperty("RAVI_XLSX_EXPORTED_REVISION")) return;
+    const current = readBackup();
+    if (!current.exportSettings?.autoExcel) return;
+    raviExportWorkbook(current, props);
+    props.setProperty("RAVI_XLSX_EXPORTED_REVISION", revision);
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 const RAVI_PROTOCOL = "ravi-cloud-v2";
 
@@ -352,29 +397,12 @@ function doPost(e) {
       if (req.action === "owner.check") return raviReply({ ok: true, role, canBootstrap: !accountLogin });
       if (req.action === "exports.xlsx") {
         if (role !== "primary") return raviReply(bad);
-        const current = readBackup();
-        const folder = current.exportSettings ? DriveApp.getFolderById(current.exportSettings.folderId) : getOrCreateFolder();
-        const shopName = String(current.settings?.name || "RAVI POS").trim().slice(0,60) || "RAVI POS";
-        const filename = shopName + " · RAVI Reports.xlsx";
-        const workbook = SpreadsheetApp.create(shopName + " · RAVI export");
-        const temporaryFile = DriveApp.getFileById(workbook.getId());
+        const exportLock = LockService.getUserLock();
+        if (!exportLock.tryLock(1)) return raviReply({ ok: false, reason: "busy" });
         try {
-          updateLiveSheetFromBody(folder, current, undefined, workbook);
-          SpreadsheetApp.flush();
-          const response = UrlFetchApp.fetch("https://docs.google.com/spreadsheets/d/" + workbook.getId() + "/export?format=xlsx", {
-            headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }
-          });
-          const blob = response.getBlob().setName(filename);
-          if (blob.getBytes().slice(0, 2).join(",") !== "80,75") throw Error("Invalid workbook");
-          const exportKey = "RAVI_XLSX_" + folder.getId();
-          const previousId = props.getProperty(exportKey);
-          const created = folder.createFile(blob);
-          props.setProperty(exportKey, created.getId());
-          if (previousId) {
-            try { DriveApp.getFileById(previousId).setTrashed(true); } catch (_) {}
-          }
+          const filename = raviExportWorkbook(readBackup(), props);
           return raviReply({ ok: true, filename });
-        } finally { temporaryFile.setTrashed(true); }
+        } finally { exportLock.releaseLock(); }
       }
       if (req.action === "exports.configure") {
         if (role !== "primary") return raviReply(bad);
@@ -391,7 +419,11 @@ function doPost(e) {
           folder = savedId ? DriveApp.getFolderById(savedId) : DriveApp.createFolder(shopName + " · RAVI POS");
           props.setProperty("RAVI_CREATED_EXPORT_FOLDER", folder.getId());
         }
-        current.exportSettings = { folderId: folder.getId(), tabs };
+        const autoExcel = req.autoExcel === true;
+        if (autoExcel && !ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === "raviRefreshExcel")) {
+          ScriptApp.newTrigger("raviRefreshExcel").timeBased().everyMinutes(5).create();
+        }
+        current.exportSettings = { folderId: folder.getId(), tabs, autoExcel };
         delete current.empty;
         writeBackup(current, false);
         return raviReply({ ok: true, folderName: folder.getName(), folderId: folder.getId() });

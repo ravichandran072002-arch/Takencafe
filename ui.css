@@ -356,3 +356,5 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 @media (min-width: 841px) {
   .grid-pos { height: calc(100dvh - 177px); }
 }
+.shop-entry-form .drive-auto-excel { display: flex; align-items: center; }
+.shop-entry-form .drive-auto-excel input { width: auto; min-height: 26px; }
