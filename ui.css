@@ -297,3 +297,9 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 
 .staff-management #staffSearchEmpty { margin-top: 12px; }
 .staff-management .user-list li[hidden] { display: none; }
+
+#shopAppearanceNotice {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 13px;
+}

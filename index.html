@@ -25,10 +25,10 @@
       return { mode, manual, palette };
     })();
 
-    function applyAppearance() {
-      const dark = appearance.mode === "auto" ? appearanceMedia.matches : appearance.mode === "dark";
+    function applyAppearance(selected = appearance) {
+      const dark = selected.mode === "auto" ? appearanceMedia.matches : selected.mode === "dark";
       document.documentElement.dataset.theme = dark ? "dark" : "day";
-      document.documentElement.dataset.palette = appearance.palette;
+      document.documentElement.dataset.palette = selected.palette;
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
     }
     applyAppearance();
@@ -1047,6 +1047,7 @@
       <div class="card" data-settings-panel="appearance" id="appearancePanel">
         <span class="card-title">Appearance</span>
         <div id="appearanceControls">
+        <p id="shopAppearanceNotice" hidden></p>
         <div class="theme-toggle-row">
           <button class="theme-btn active" id="btnThemeDay" onclick="setAppTheme('day')">☀️ Day</button>
           <button class="theme-btn" id="btnThemeDark" onclick="setAppTheme('dark')">🌙 Night</button>
@@ -1809,6 +1810,7 @@
 
     function applyRolePermissionsUI() {
       const cloudStaff = isCloudStaff();
+      applyThemeUI();
       const canConfigure = canConfigureBilling();
       document.getElementById("billingPreferencesNav").hidden = !canConfigure;
       document.getElementById("billingPreferencesCard").hidden = !canConfigure;
@@ -1875,28 +1877,70 @@
       }
     }
 
-    function setAppTheme(mode) {
-      appearance.mode = mode;
-      if (mode !== "auto") appearance.manual = mode;
-      safeStorageSet("tc_appearance", appearance);
+    const shopAppearances = safeStorageGet("tc_shop_appearances", {});
+
+    function appearanceShopEndpoint() {
+      if (isCloudStaff() && typeof RaviCloud !== "undefined") return RaviCloud.staffShopLink();
+      return settings.gdriveUrl || DEFAULT_RAVI_ENDPOINT;
+    }
+
+    function currentShopAppearance() {
+      if (sessionStorage.getItem("tc_session_logged") !== "1") return undefined;
+      return shopAppearances[appearanceShopEndpoint()];
+    }
+
+    function receiveShopAppearance(preset, endpoint = appearanceShopEndpoint()) {
+      if (!endpoint || !appearancePalettes.has(preset?.palette) || !["day", "dark", "auto"].includes(preset.mode)
+        || !Number.isSafeInteger(preset.updatedAt) || preset.updatedAt <= (shopAppearances[endpoint]?.updatedAt || 0)) return;
+      shopAppearances[endpoint] = { palette: preset.palette, mode: preset.mode, updatedAt: preset.updatedAt };
+      safeStorageSet("tc_shop_appearances", shopAppearances);
       applyThemeUI();
+    }
+
+    function changeAppearance(value) {
+      const shared = currentShopAppearance();
+      const signedIn = sessionStorage.getItem("tc_session_logged") === "1";
+      const owner = signedIn && getLoggedAccount().role === "Owner";
+      if (shared && !owner) return;
+      const selected = { ...(shared || appearance), ...value };
+      appearance.palette = selected.palette;
+      appearance.mode = selected.mode;
+      if (selected.mode !== "auto") appearance.manual = selected.mode;
+      safeStorageSet("tc_appearance", appearance);
+      if (owner) {
+        receiveShopAppearance({ ...selected, updatedAt: Math.max(Date.now(), (shared?.updatedAt || 0) + 1) });
+        triggerBackgroundSync();
+      } else {
+        applyThemeUI();
+      }
+    }
+
+    function setAppTheme(mode) {
+      if (["day", "dark", "auto"].includes(mode)) changeAppearance({ mode });
     }
 
     function setAppPalette(palette) {
-      if (!appearancePalettes.has(palette)) return;
-      appearance.palette = palette;
-      safeStorageSet("tc_appearance", appearance);
-      applyThemeUI();
+      if (appearancePalettes.has(palette)) changeAppearance({ palette });
     }
 
     function applyThemeUI() {
-      applyAppearance();
-      document.getElementById("paletteSelect").value = appearance.palette;
+      const shared = currentShopAppearance();
+      const selected = shared || appearance;
+      const owner = sessionStorage.getItem("tc_session_logged") === "1" && getLoggedAccount().role === "Owner";
+      const locked = Boolean(shared) && !owner;
+      applyAppearance(selected);
+      const palette = document.getElementById("paletteSelect");
+      palette.value = selected.palette;
+      palette.disabled = locked;
+      const notice = document.getElementById("shopAppearanceNotice");
+      notice.hidden = !owner && !locked;
+      notice.textContent = owner ? "Appearance changes sync to all shop devices." : "Appearance is set by the shop Owner.";
       for (const [id, mode] of [["btnThemeDay", "day"], ["btnThemeDark", "dark"], ["btnThemeAuto", "auto"]]) {
         const button = document.getElementById(id);
-        const active = appearance.mode === mode;
+        const active = selected.mode === mode;
         button.classList.toggle("active", active);
         button.setAttribute("aria-pressed", String(active));
+        button.disabled = locked;
       }
     }
     appearanceMedia.addEventListener("change", applyThemeUI);
@@ -3032,6 +3076,7 @@
           bills: bills.filter(row => !row.cloud),
           expenses,
           attendance: attendance.filter(row => !row.cloud),
+          ...(currentShopAppearance() ? { shopAppearance: currentShopAppearance() } : {}),
           ...(settings.billingPreferences ? { billingPreferences: settings.billingPreferences } : {}),
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
@@ -3094,6 +3139,7 @@
         remote.attendance.forEach(ra => { const localAtt = attMap.get(ra.uid); if (!localAtt || (ra.updatedAt || 0) > (localAtt.updatedAt || 0)) attMap.set(ra.uid, ra); });
         attendance = Array.from(attMap.values()).sort((a, b) => (b.inTimestamp || 0) - (a.inTimestamp || 0)); safeStorageSet("tc_attendance", attendance);
       }
+      receiveShopAppearance(remote.shopAppearance);
       if (remote.billingPreferences && (remote.billingPreferences.updatedAt || 0) > (settings.billingPreferences?.updatedAt || 0)) {
         settings.billingPreferences = remote.billingPreferences;
         safeStorageSet("tc_settings", settings);

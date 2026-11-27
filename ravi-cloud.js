@@ -35,8 +35,10 @@ function raviStaffDigest(secret, id, password) {
 
 function raviMergeBackup(saved, incoming) {
   const merged = { ...saved, ...incoming };
-  if (saved.billingPreferences && (saved.billingPreferences.updatedAt || 0) >= (incoming.billingPreferences?.updatedAt || 0)) {
-    merged.billingPreferences = saved.billingPreferences;
+  for (const field of ["billingPreferences", "shopAppearance"]) {
+    if (saved[field] && (saved[field].updatedAt || 0) >= (incoming[field]?.updatedAt || 0)) {
+      merged[field] = saved[field];
+    }
   }
   delete merged.authUsers;
   delete merged.deletedUserIds;
@@ -99,7 +101,7 @@ function raviStaffSync(req) {
   const receiptShop = whatsAppPdf && shop ? {
     name: shop.name, address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi
   } : undefined;
-  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop });
+  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance });
 }
 
 function raviRole(props, id) {
@@ -241,6 +243,14 @@ function doPost(e) {
           delete data.billingPreferences;
         } else {
           data.billingPreferences = { whatsAppPdf: preferences.whatsAppPdf, updatedAt: preferences.updatedAt };
+        }
+        const preset = data.shopAppearance;
+        if (!["day", "dark", "auto"].includes(preset?.mode)
+          || typeof preset.palette !== "string" || !/^[a-z-]{1,32}$/.test(preset.palette)
+          || !Number.isSafeInteger(preset.updatedAt) || preset.updatedAt <= 0) {
+          delete data.shopAppearance;
+        } else {
+          data.shopAppearance = { mode: preset.mode, palette: preset.palette, updatedAt: preset.updatedAt };
         }
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
         const merged = raviMergeBackup(readBackup(), data);
@@ -532,6 +542,7 @@ function doPost(e) {
       if (!isOnlineOwner()) {
         connection.whatsAppPdf = remote.whatsAppPdf === true;
         connection.receiptShop = remote.receiptShop;
+        receiveShopAppearance(remote.shopAppearance, connection.endpoint);
         updateWhatsAppBillingUI();
       }
       for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
