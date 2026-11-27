@@ -281,26 +281,34 @@
 
   /* ---------- 2. Delete PIN (hashed, owner-set, no hardcoded value) ---------- */
   const PIN_KEY = "tc_pin_hash";
+  const deletePinPattern = /^\d{4}$/;
   const pinHash = p => hashPw(p);
 
   window.confirmDeleteWithPin = async function () {
     const entered = $r("billDeletePinInput").value.trim();
     const acc = getLoggedAccount();
-    if (!pendingDeleteTarget) return;
+    const target = pendingDeleteTarget;
+    if (!target || sessionStorage.getItem("tc_session_logged") !== "1" || !acc.isOwnerOrMgr) return;
+    const sessionUid = sessionStorage.getItem("tc_logged_uid");
+    const stillConfirming = () => pendingDeleteTarget === target && sessionStorage.getItem("tc_session_logged") === "1"
+      && sessionStorage.getItem("tc_logged_uid") === sessionUid;
     const stored = localStorage.getItem(PIN_KEY);
     if (!stored) {
       if (acc.role !== "Owner") return showToast("Owner must set the Delete PIN first (Settings)");
-      if (!/^\d{6}$/.test(entered)) return showToast("Enter a new 6-digit PIN to set it");
-      localStorage.setItem(PIN_KEY, await pinHash(entered));
+      if (!deletePinPattern.test(entered)) return showToast("Enter a new 4-digit PIN to set it");
+      const hash = await pinHash(entered);
+      if (!stillConfirming() || localStorage.getItem(PIN_KEY)) return;
+      localStorage.setItem(PIN_KEY, hash);
       $r("billDeletePinInput").value = "";
       return showToast("✅ Delete PIN saved — enter it again to delete");
     }
-    if (!(await verifyPw(entered, stored, "pin"))) {
-      showToast("❌ Thappana PIN! Delete aagala.");
+    const valid = deletePinPattern.test(entered) && await verifyPw(entered, stored, "pin");
+    if (!stillConfirming() || localStorage.getItem(PIN_KEY) !== stored) return;
+    if (!valid) {
+      showToast("Wrong PIN. If you have an old 6-digit PIN, change it in Settings → Delete PIN.");
       $r("billDeletePinInput").value = ""; $r("billDeletePinInput").focus(); return;
     }
-    const { type, uid } = pendingDeleteTarget;
-    if (sessionStorage.getItem("tc_session_logged") !== "1" || !acc.isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!");
+    const { type, uid } = target;
     if (type === "bill") {
       const t = bills.find(b => (b.uid || b.billNo) === uid);
       bills = bills.filter(b => (b.uid || b.billNo) !== uid);
@@ -328,8 +336,8 @@
     if (getLoggedAccount().role !== "Owner") return showToast("Owner mattum dhaan PIN maatha mudiyum");
     const stored = localStorage.getItem(PIN_KEY);
     if (stored) { const cur = prompt("Current Delete PIN:"); if (!cur || !(await verifyPw(cur.trim(), stored, "pin"))) return showToast("❌ Wrong current PIN"); }
-    const np = prompt("New 6-digit Delete PIN:");
-    if (!np || !/^\d{6}$/.test(np.trim())) return showToast("PIN must be exactly 6 digits");
+    const np = prompt("New 4-digit Delete PIN:");
+    if (!np || !deletePinPattern.test(np.trim())) return showToast("PIN must be exactly 4 digits");
     localStorage.setItem(PIN_KEY, await pinHash(np.trim())); showToast("✅ Delete PIN updated");
   }
 
