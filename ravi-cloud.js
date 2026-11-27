@@ -720,10 +720,30 @@ function doPost(e) {
         const role = roles?.[id] || "staff";
         const roleLabel = { primary: "Primary owner", "co-owner": "Co-owner", staff: "Staff" }[role];
         const blocked = revokedIds?.includes(id);
-        const { row, details, actions } = createUserAccountRow(id, roleLabel, blocked ? "Blocked" : "Allowed", !blocked);
+        const { row, details, actions } = createUserAccountRow(id, roleLabel, blocked ? "Sign-in blocked" : "Sign-in allowed", !blocked);
+        row.classList.add("online-account-row");
+        const manage = document.createElement("span");
+        manage.className = "online-manage-label";
+        manage.textContent = "Manage";
+        details.firstElementChild.append(manage);
+        const groups = new Map();
+        function group(title) {
+          if (!groups.has(title)) {
+            const section = document.createElement("div");
+            const heading = document.createElement("strong");
+            const controls = document.createElement("div");
+            section.className = "online-account-action-group";
+            heading.textContent = title;
+            controls.className = "online-account-buttons";
+            section.append(heading, controls);
+            actions.append(section);
+            groups.set(title, controls);
+          }
+          return groups.get(title);
+        }
         details.dataset.account = id;
         details.open = expanded.has(id) || Boolean(pendingPins?.includes(id) && !blocked);
-        const addAction = (label, action, message) => {
+        const addAction = (title, label, action, message) => {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "mini-btn";
@@ -743,10 +763,10 @@ function doPost(e) {
             await refreshList(endpoint);
             result.textContent = message;
           });
-          actions.append(button);
+          group(title).append(button);
         };
         if (blocked) {
-          addAction("Restore access", "staff.restore", id + " can sign in again.");
+          addAction("Online sign-in", "Restore access", "staff.restore", id + " can sign in again.");
           list.append(row);
           continue;
         }
@@ -762,7 +782,7 @@ function doPost(e) {
             updateUserAccountForm();
             byId("assignedStaffPin").focus();
           };
-          actions.append(reset);
+          group("Password and PIN").append(reset);
         }
         if (canManageOwners && role !== "primary") {
           const resetPassword = document.createElement("button");
@@ -780,13 +800,13 @@ function doPost(e) {
             result.textContent = "New password for " + id + ". Share it privately and select Password on the login screen.";
             passwordField.scrollIntoView({ block: "nearest" });
           });
-          actions.append(resetPassword);
+          group("Password and PIN").append(resetPassword);
         }
-        if (role === "staff") addAction("Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
+        if (role === "staff") addAction("Online sign-in", "Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
         if (canManageOwners && role !== "primary") {
-          if (role === "staff") addAction("Make Co-owner", "owner.promote", id + " is now a co-owner. Use their online password for Owner access, or reset it here.");
-          else addAction("Remove Co-owner access", "owner.demote", id + " is now Staff.");
-          addAction("Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
+          if (role === "staff") addAction("Account role", "Make Co-owner", "owner.promote", id + " is now a co-owner. Use their online password for Owner access, or reset it here.");
+          else addAction("Account role", "Remove Co-owner access", "owner.demote", id + " is now Staff.");
+          addAction("Account role", "Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
         }
         if (pendingPins?.includes(id)) {
           const approve = document.createElement("button");
@@ -798,7 +818,14 @@ function doPost(e) {
             await refreshList(endpoint);
             result.textContent = "PIN approved. " + id + " can now sign in on any device.";
           });
-          actions.append(approve);
+          group("Online sign-in").append(approve);
+        }
+        if (!groups.size) {
+          const note = document.createElement("p");
+          note.textContent = role === "primary"
+            ? "This is the shop’s Primary Owner."
+            : "The Primary Owner manages this account’s role and sign-in.";
+          actions.append(note);
         }
         list.append(row);
       }

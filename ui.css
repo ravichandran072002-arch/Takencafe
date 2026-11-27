@@ -328,3 +328,17 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   #tab-settings.active { display: block; }
   .settings-nav { flex-direction: row; }
 }
+
+.online-manage-label {
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 700;
+}
+.online-account-row .user-row-actions { display: grid; gap: 12px; }
+.online-account-action-group { display: grid; gap: 6px; }
+.online-account-action-group > strong { color: var(--muted); font-size: 12px; }
+.online-account-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 380px) {
+  .online-account-row summary { gap: 6px; }
+  .online-account-row .user-access-status { padding-inline: 5px; font-size: 11px; }
+}
