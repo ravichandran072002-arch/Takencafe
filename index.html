@@ -11,6 +11,28 @@
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.json" />
   <title>RAVI POS</title>
+  <script>
+    const appearancePalettes = new Set(['classic', 'forest', 'ocean', 'plum', 'premium-black', 'midnight-royal', 'emerald-luxe', 'midnight-blue', 'royal-purple', 'coffee-brown', 'carbon-black', 'ocean-teal', 'rose-gold']);
+    const appearanceMedia = matchMedia("(prefers-color-scheme: dark)");
+    const appearance = (() => {
+      let saved;
+      try {
+        saved = JSON.parse(localStorage.getItem("tc_appearance")) || JSON.parse(localStorage.getItem("tc_settings"));
+      } catch (_) {}
+      const manual = saved?.manual === "dark" || saved?.theme === "dark" ? "dark" : "day";
+      const mode = ["day", "dark", "auto"].includes(saved?.mode) ? saved.mode : saved ? manual : "dark";
+      const palette = appearancePalettes.has(saved?.palette) ? saved.palette : saved ? "classic" : "premium-black";
+      return { mode, manual, palette };
+    })();
+
+    function applyAppearance() {
+      const dark = appearance.mode === "auto" ? appearanceMedia.matches : appearance.mode === "dark";
+      document.documentElement.dataset.theme = dark ? "dark" : "day";
+      document.documentElement.dataset.palette = appearance.palette;
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    }
+    applyAppearance();
+  </script>
   <style>
     :root {
       --bg: #f4efe9;
@@ -103,6 +125,205 @@
     [data-theme="dark"][data-palette="plum"] {
       --amber: #e5a9f0;
       --amber-soft: #43274c;
+    }
+
+    [data-palette="premium-black"] {
+      --espresso: #111214;
+      --roast: #202124;
+      --accent-fill: #a74b00;
+    }
+    [data-theme="day"][data-palette="premium-black"] {
+      --bg: #fff0de;
+      --th-bg: #fff0de;
+      --amber: #a74b00;
+      --amber-soft: #fff0de;
+    }
+    [data-theme="dark"][data-palette="premium-black"] {
+      --bg: #111214;
+      --card: #202124;
+      --input-bg: #202124;
+      --th-bg: #202124;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #FF890B;
+      --amber-soft: #202124;
+    }
+    [data-palette="midnight-royal"] {
+      --espresso: #101725;
+      --roast: #1E293C;
+      --accent-fill: #2357a7;
+    }
+    [data-theme="day"][data-palette="midnight-royal"] {
+      --bg: #e6efff;
+      --th-bg: #e6efff;
+      --amber: #2357a7;
+      --amber-soft: #e6efff;
+    }
+    [data-theme="dark"][data-palette="midnight-royal"] {
+      --bg: #101725;
+      --card: #1E293C;
+      --input-bg: #1E293C;
+      --th-bg: #1E293C;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #5789EF;
+      --amber-soft: #1E293C;
+    }
+    [data-palette="emerald-luxe"] {
+      --espresso: #101B17;
+      --roast: #1D3028;
+      --accent-fill: #126b4b;
+    }
+    [data-theme="day"][data-palette="emerald-luxe"] {
+      --bg: #e3f5ec;
+      --th-bg: #e3f5ec;
+      --amber: #126b4b;
+      --amber-soft: #e3f5ec;
+    }
+    [data-theme="dark"][data-palette="emerald-luxe"] {
+      --bg: #101B17;
+      --card: #1D3028;
+      --input-bg: #1D3028;
+      --th-bg: #1D3028;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #27A878;
+      --amber-soft: #1D3028;
+    }
+    [data-palette="midnight-blue"] {
+      --espresso: #111c29;
+      --roast: #202e43;
+      --accent-fill: #225b9a;
+    }
+    [data-theme="day"][data-palette="midnight-blue"] {
+      --bg: #e5f2ff;
+      --th-bg: #e5f2ff;
+      --amber: #225b9a;
+      --amber-soft: #e5f2ff;
+    }
+    [data-theme="dark"][data-palette="midnight-blue"] {
+      --bg: #111c29;
+      --card: #202e43;
+      --input-bg: #202e43;
+      --th-bg: #202e43;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #79afff;
+      --amber-soft: #202e43;
+    }
+    [data-palette="royal-purple"] {
+      --espresso: #1d1626;
+      --roast: #322440;
+      --accent-fill: #6841a2;
+    }
+    [data-theme="day"][data-palette="royal-purple"] {
+      --bg: #f2eafc;
+      --th-bg: #f2eafc;
+      --amber: #6841a2;
+      --amber-soft: #f2eafc;
+    }
+    [data-theme="dark"][data-palette="royal-purple"] {
+      --bg: #1d1626;
+      --card: #322440;
+      --input-bg: #322440;
+      --th-bg: #322440;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #c6a3ff;
+      --amber-soft: #322440;
+    }
+    [data-palette="coffee-brown"] {
+      --espresso: #201710;
+      --roast: #34271e;
+      --accent-fill: #875328;
+    }
+    [data-theme="day"][data-palette="coffee-brown"] {
+      --bg: #fff0e4;
+      --th-bg: #fff0e4;
+      --amber: #875328;
+      --amber-soft: #fff0e4;
+    }
+    [data-theme="dark"][data-palette="coffee-brown"] {
+      --bg: #201710;
+      --card: #34271e;
+      --input-bg: #34271e;
+      --th-bg: #34271e;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #eeb984;
+      --amber-soft: #34271e;
+    }
+    [data-palette="carbon-black"] {
+      --espresso: #111315;
+      --roast: #24282c;
+      --accent-fill: #475666;
+    }
+    [data-theme="day"][data-palette="carbon-black"] {
+      --bg: #eef3f8;
+      --th-bg: #eef3f8;
+      --amber: #475666;
+      --amber-soft: #eef3f8;
+    }
+    [data-theme="dark"][data-palette="carbon-black"] {
+      --bg: #111315;
+      --card: #24282c;
+      --input-bg: #24282c;
+      --th-bg: #24282c;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #bdcad6;
+      --amber-soft: #24282c;
+    }
+    [data-palette="ocean-teal"] {
+      --espresso: #0c2225;
+      --roast: #1b3539;
+      --accent-fill: #146966;
+    }
+    [data-theme="day"][data-palette="ocean-teal"] {
+      --bg: #dff6f2;
+      --th-bg: #dff6f2;
+      --amber: #146966;
+      --amber-soft: #dff6f2;
+    }
+    [data-theme="dark"][data-palette="ocean-teal"] {
+      --bg: #0c2225;
+      --card: #1b3539;
+      --input-bg: #1b3539;
+      --th-bg: #1b3539;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #59d4cc;
+      --amber-soft: #1b3539;
+    }
+    [data-palette="rose-gold"] {
+      --espresso: #25191c;
+      --roast: #3c292f;
+      --accent-fill: #9a414f;
+    }
+    [data-theme="day"][data-palette="rose-gold"] {
+      --bg: #fcebee;
+      --th-bg: #fcebee;
+      --amber: #9a414f;
+      --amber-soft: #fcebee;
+    }
+    [data-theme="dark"][data-palette="rose-gold"] {
+      --bg: #25191c;
+      --card: #3c292f;
+      --input-bg: #3c292f;
+      --th-bg: #3c292f;
+      --text: #f5f5f5;
+      --muted: #a8abb2;
+      --border: #52565d;
+      --amber: #f4a9ae;
+      --amber-soft: #3c292f;
     }
 
     * {
@@ -392,7 +613,7 @@
       border-radius: 12px; background: var(--bg); color: var(--muted);
     }
     .theme-toggle-row {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px;
     }
     .theme-btn {
       padding: 11px; border-radius: 10px; border: 2px solid var(--border);
@@ -456,7 +677,10 @@
       </div>
       <div class="field-group">
         <label id="loginPassLabel" for="loginPassInput">Password</label>
-        <input type="password" id="loginPassInput" placeholder="Enter password" autocomplete="current-password" />
+        <div class="login-password-row">
+          <input type="password" id="loginPassInput" placeholder="Enter password" autocomplete="current-password" />
+          <button type="button" class="mini-btn" id="loginShowPassword" aria-pressed="false" onclick="toggleLoginPassword()">Show</button>
+        </div>
       </div>
       <div id="pinEnrollment" class="field-group login-pin-enrollment" hidden>
         <label><input type="checkbox" id="setupPinOnLogin" /> Set up my Owner PIN on this device</label>
@@ -499,26 +723,28 @@
       </div>
     </div>
     <div class="header-actions">
+      <button class="sync-badge" id="mainNavToggle" type="button" aria-controls="mainNav" aria-expanded="true" onclick="toggleMainNavigation(this)">Navigation</button>
       <button class="staff-badge logged-out" id="headerStaffBtn" onclick="openStaffLoginModal()">👤 Shift</button>
       <button class="install-btn" id="installAppBtn" onclick="triggerInstallApp()">⬇ App</button>
       <button class="sync-badge" id="syncStatusBadge" onclick="syncNowBothWays(true)">☁️ Sync</button>
     </div>
   </header>
 
-  <div class="nav-tabs">
+  <nav class="nav-tabs" id="mainNav" aria-label="Main navigation">
     <button class="active" id="nav-pos" onclick="switchTab('pos', this)">POS Billing</button>
     <button id="nav-staff" onclick="switchTab('staff', this)">Staff In/Out</button>
     <button id="nav-summary" onclick="switchTab('summary', this)">Bills & Excel</button>
     <button id="nav-expenses" onclick="switchTab('expenses', this)">Expenses</button>
     <button id="nav-menu" onclick="switchTab('menu', this)">Menu Edit</button>
+    <button id="cloudStaffAppearance" hidden onclick="openStaffAppearance()">Appearance</button>
     <button id="cloudStaffLogout" hidden onclick="logoutApp()">Lock / Logout</button>
     <button id="nav-settings" onclick="switchTab('settings', this)">Settings</button>
-  </div>
+  </nav>
 
   <div class="container">
     <div id="tab-pos" class="section active">
       <div class="grid-pos">
-        <div class="card">
+        <div class="card pos-menu-card">
           <div class="search-wrap">
             <span class="search-icon">🔍</span>
             <input type="text" id="searchMenu" placeholder="Search items..." oninput="debouncedRenderMenu()" />
@@ -546,7 +772,7 @@
             </select>
           </div>
           <input type="text" id="custNameDesk" placeholder="Customer Name / Table No." oninput="syncOrderFields('desk')" style="margin-bottom:8px;" />
-          <div id="cartListDesk" style="min-height:150px;max-height:240px;overflow-y:auto;"></div>
+          <div id="cartListDesk"></div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
             <div>
@@ -744,7 +970,17 @@
     </div>
 
     <div id="tab-settings" class="section">
-      <div class="card cloud-settings-card shop-setup">
+      <nav class="settings-nav" aria-label="Settings">
+        <button type="button" data-settings-button="shop" onclick="showSettingsPanel('shop')">Shop Setup</button>
+        <button type="button" data-settings-button="users" onclick="showSettingsPanel('users')">Users &amp; Access</button>
+        <button type="button" data-settings-button="appearance" onclick="showSettingsPanel('appearance')">Appearance</button>
+        <button type="button" data-settings-button="sync" onclick="showSettingsPanel('sync')">Cloud &amp; Sync</button>
+        <button type="button" data-settings-button="printer" onclick="showSettingsPanel('printer')">Receipt Printer</button>
+        <button type="button" data-settings-button="security" onclick="showSettingsPanel('security')">Security &amp; Account</button>
+        <button type="button" data-settings-button="about" onclick="showSettingsPanel('about')">About</button>
+      </nav>
+      <div class="settings-panels">
+      <div class="card cloud-settings-card shop-setup" data-settings-panel="shop">
         <h2>Shop Setup</h2>
         <section class="shop-setup-section" aria-labelledby="shopNameHeading">
           <h3 id="shopNameHeading">Shop name</h3>
@@ -787,28 +1023,44 @@
         <button class="btn btn-green" onclick="saveSettings()">Save shop details</button>
       </div>
 
-      <div class="card">
+      <div class="card" data-settings-panel="security">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-          <span class="card-title">🌗 Appearance & Account</span>
+          <span class="card-title">Security &amp; Account</span>
           <button class="mini-btn del" onclick="logoutApp()">🚪 Lock / Logout</button>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;" id="currentUserBadgeText">Logged in</div>
+      </div>
+
+      <div class="card" data-settings-panel="appearance" id="appearancePanel">
+        <span class="card-title">Appearance</span>
+        <div id="appearanceControls">
         <div class="theme-toggle-row">
-          <button class="theme-btn active" id="btnThemeDay" onclick="setAppTheme('day')">☀️ Day Mode</button>
-          <button class="theme-btn" id="btnThemeDark" onclick="setAppTheme('dark')">🌙 Dark Mode</button>
+          <button class="theme-btn active" id="btnThemeDay" onclick="setAppTheme('day')">☀️ Day</button>
+          <button class="theme-btn" id="btnThemeDark" onclick="setAppTheme('dark')">🌙 Night</button>
+          <button class="theme-btn" id="btnThemeAuto" onclick="setAppTheme('auto')">Auto</button>
         </div>
         <label class="appearance-style" for="paletteSelect">
           Colour theme
           <select id="paletteSelect" onchange="setAppPalette(this.value)">
+            <option value="premium-black">Premium Black</option>
+            <option value="midnight-royal">Midnight Royal</option>
+            <option value="emerald-luxe">Emerald Luxe</option>
+            <option value="midnight-blue">Midnight Blue</option>
+            <option value="royal-purple">Royal Purple</option>
+            <option value="coffee-brown">Coffee Brown</option>
+            <option value="carbon-black">Carbon Black</option>
+            <option value="ocean-teal">Ocean Teal</option>
+            <option value="rose-gold">Rose Gold</option>
             <option value="classic">Classic Amber</option>
             <option value="forest">Forest Green</option>
             <option value="ocean">Ocean Blue</option>
             <option value="plum">Plum</option>
           </select>
         </label>
+        </div>
       </div>
 
-      <div class="card" id="userAccessControlCard">
+      <div class="card" id="userAccessControlCard" data-settings-panel="users">
         <span class="card-title">🔐 Login IDs & Attendance Access Control</span>
         <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">
           <b>Owner</b> & <b>Manager</b>-ku attendance automatic-ah theriyum. <b>Staff</b>-ku attendance paakka access venumna, keezha <b>Attendance Access</b> button-a ON pannikalam.
@@ -859,7 +1111,7 @@
         </div>
       </div>
 
-      <div class="card cloud-settings-card">
+      <div class="card cloud-settings-card" data-settings-panel="sync">
         <div class="cloud-settings-heading">
           <div>
             <h2>Google Drive &amp; Sheets sync</h2>
@@ -907,7 +1159,7 @@
         </details>
       </div>
 
-      <div class="card cloud-settings-card" id="cloudStaffPanel" hidden>
+      <div class="card cloud-settings-card" id="cloudStaffPanel" data-settings-panel="users" hidden>
         <h2>Staff &amp; Owner access</h2>
         <div class="cloud-settings-fields">
           <label for="cloudStaffId">Online Staff ID</label>
@@ -929,7 +1181,7 @@
         </div>
       </div>
 
-      <div class="card cloud-settings-card">
+      <div class="card cloud-settings-card" data-settings-panel="printer">
         <h2>Receipt printer</h2>
         <div class="cloud-settings-fields">
           <label for="paperSizeSelect">Paper size</label>
@@ -944,7 +1196,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" data-settings-panel="about">
         <span class="card-title">About</span>
         <div class="policy-box" style="margin-top:8px;">
           <details>
@@ -960,8 +1212,15 @@
           <p style="margin:8px 0 0;">Ravi thanks his family and friends.</p>
         </div>
       </div>
+      </div>
     </div>
   </div>
+
+  <dialog id="staffAppearanceDialog" class="card" aria-labelledby="staffAppearanceTitle" onclose="restoreAppearanceControls()">
+    <h2 id="staffAppearanceTitle">Appearance</h2>
+    <div id="staffAppearanceOptions"></div>
+    <form method="dialog"><button class="btn btn-outline">Done</button></form>
+  </dialog>
 
   <div class="live-bill-bar" id="liveBillBar">
     <div class="live-chips" id="liveChipsRow">
@@ -1531,6 +1790,7 @@
       const cloudStaff = isCloudStaff();
       for (const tab of ["summary", "expenses", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
       document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
+      document.getElementById("cloudStaffAppearance").hidden = !cloudStaff;
       if (cloudStaff && !["pos", "staff"].includes(activeTabName)) switchTab("pos", document.getElementById("nav-pos"));
       const acc = getLoggedAccount();
       const badgeText = document.getElementById("currentUserBadgeText");
@@ -1591,30 +1851,38 @@
     }
 
     function setAppTheme(mode) {
-      settings.theme = mode;
-      safeStorageSet("tc_settings", settings);
+      appearance.mode = mode;
+      if (mode !== "auto") appearance.manual = mode;
+      safeStorageSet("tc_appearance", appearance);
       applyThemeUI();
-      showToast(mode === "dark" ? "🌙 Dark Mode Activated" : "☀️ Day Mode Activated");
     }
 
     function setAppPalette(palette) {
-      settings.palette = palette;
-      safeStorageSet("tc_settings", settings);
+      if (!appearancePalettes.has(palette)) return;
+      appearance.palette = palette;
+      safeStorageSet("tc_appearance", appearance);
       applyThemeUI();
     }
 
     function applyThemeUI() {
-      const isDark = settings.theme === "dark";
-      const choices = document.getElementById("paletteSelect");
-      const palette = [...choices.options].some(option => option.value === settings.palette) ? settings.palette : "classic";
-      document.documentElement.dataset.theme = isDark ? "dark" : "day";
-      document.documentElement.dataset.palette = palette;
-      choices.value = palette;
-      for (const [id, active] of [["btnThemeDay", !isDark], ["btnThemeDark", isDark]]) {
+      applyAppearance();
+      document.getElementById("paletteSelect").value = appearance.palette;
+      for (const [id, mode] of [["btnThemeDay", "day"], ["btnThemeDark", "dark"], ["btnThemeAuto", "auto"]]) {
         const button = document.getElementById(id);
+        const active = appearance.mode === mode;
         button.classList.toggle("active", active);
         button.setAttribute("aria-pressed", String(active));
       }
+    }
+    appearanceMedia.addEventListener("change", applyThemeUI);
+
+    function toggleLoginPassword() {
+      const input = document.getElementById("loginPassInput");
+      const button = document.getElementById("loginShowPassword");
+      const visible = input.type === "password";
+      input.type = visible ? "text" : "password";
+      button.textContent = visible ? "Hide" : "Show";
+      button.setAttribute("aria-pressed", String(visible));
     }
 
     function checkSessionLogin() {
@@ -1896,6 +2164,31 @@
       triggerBackgroundSync();
     }
 
+    function openStaffAppearance() {
+      if (!isCloudStaff()) return;
+      document.getElementById("staffAppearanceOptions").append(document.getElementById("appearanceControls"));
+      document.getElementById("staffAppearanceDialog").showModal();
+    }
+
+    function restoreAppearanceControls() {
+      document.getElementById("appearancePanel").append(document.getElementById("appearanceControls"));
+    }
+
+    function showSettingsPanel(panel) {
+      const settingsTab = document.getElementById("tab-settings");
+      for (const button of settingsTab.querySelectorAll("[data-settings-button]")) {
+        button.setAttribute("aria-pressed", String(button.dataset.settingsButton === panel));
+      }
+      for (const card of settingsTab.querySelectorAll("[data-settings-panel]")) {
+        card.classList.toggle("settings-panel-inactive", card.dataset.settingsPanel !== panel);
+      }
+    }
+
+    function toggleMainNavigation(button) {
+      const collapsed = document.body.classList.toggle("main-nav-collapsed");
+      button.setAttribute("aria-expanded", String(!collapsed));
+    }
+
     function switchTab(tab, btn) {
       if (isCloudStaff() && !["pos", "staff"].includes(tab)) return;
       activeTabName = tab;
@@ -1903,7 +2196,6 @@
       document.querySelectorAll(".nav-tabs button").forEach(b => b.classList.remove("active"));
       document.getElementById("tab-" + tab).classList.add("active");
       if (btn) btn.classList.add("active");
-      document.getElementById("liveBillBar").style.display = (tab === "pos" && window.innerWidth <= 840) ? "block" : "none";
       if (tab === "staff") renderAttendance();
       if (tab === "summary") renderSummary();
       if (tab === "expenses") renderExpenses();
@@ -2582,6 +2874,7 @@
 
     // Use the uploaded RAVI visual identity instead of runtime-generated icons.
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;
+    showSettingsPanel("shop");
     applySettingsToInputs();
     checkSessionLogin();
     document.getElementById("attendanceExportFrom").value = parseAnyDateToISO(getTodayDDMMYYYY());
