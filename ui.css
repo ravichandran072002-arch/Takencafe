@@ -198,3 +198,16 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   body.main-nav-collapsed #mainNav { display: none; }
   .grid-pos { height: calc(100dvh - 90px); }
 }
+
+.checkout-customer { display: grid; gap: 6px; margin-bottom: 8px; }
+.checkout-customer input { margin-bottom: 0 !important; }
+.checkout-customer-desktop:has(input[type="tel"]:not([hidden])) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#enableWhatsAppPdf { width: auto; min-height: 0; vertical-align: middle; }
+[data-whatsapp-checkout] { grid-column: 1 / -1; }
+#billingPreferencesCard[hidden],
+#billingPreferencesNav[hidden],
+[data-whatsapp-checkout][hidden],
+#receiptPdfButton[hidden],
+#receiptCustomerChat[hidden] { display: none; }

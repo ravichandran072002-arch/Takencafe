@@ -771,7 +771,10 @@
               <option value="Khata">📒 Khata (Credit)</option>
             </select>
           </div>
-          <input type="text" id="custNameDesk" placeholder="Customer Name / Table No." oninput="syncOrderFields('desk')" style="margin-bottom:8px;" />
+          <div class="checkout-customer checkout-customer-desktop">
+            <input type="text" id="custNameDesk" placeholder="Customer Name / Table No." oninput="syncOrderFields('desk')" style="margin-bottom:8px;" />
+            <input id="customerPhoneDesk" type="tel" aria-label="Customer WhatsApp number" placeholder="WhatsApp number (+91)" maxlength="24" autocomplete="off" oninput="syncOrderFields('desk')" hidden />
+          </div>
           <div id="cartListDesk"></div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
@@ -800,6 +803,7 @@
             <button class="btn btn-outline" onclick="clearCart()">Clear</button>
             <button class="btn btn-green" onclick="checkoutBill(false)">💾 Save Bill</button>
             <button class="btn btn-primary" onclick="checkoutBill(true)">🖨️ Save & Print</button>
+            <button class="btn btn-outline" data-whatsapp-checkout onclick="checkoutBill(true)" hidden>Save &amp; open PDF options</button>
           </div>
         </div>
       </div>
@@ -972,6 +976,7 @@
     <div id="tab-settings" class="section">
       <nav class="settings-nav" aria-label="Settings">
         <button type="button" data-settings-button="shop" onclick="showSettingsPanel('shop')">Shop Setup</button>
+        <button type="button" id="billingPreferencesNav" data-settings-button="billing" onclick="showSettingsPanel('billing')" hidden>Billing Preferences</button>
         <button type="button" data-settings-button="users" onclick="showSettingsPanel('users')">Users &amp; Access</button>
         <button type="button" data-settings-button="appearance" onclick="showSettingsPanel('appearance')">Appearance</button>
         <button type="button" data-settings-button="sync" onclick="showSettingsPanel('sync')">Cloud &amp; Sync</button>
@@ -1021,6 +1026,14 @@
           </div>
         </section>
         <button class="btn btn-green" onclick="saveSettings()">Save shop details</button>
+      </div>
+
+      <div class="card cloud-settings-card" id="billingPreferencesCard" data-settings-panel="billing" hidden>
+        <h2>Billing Preferences</h2>
+        <div class="cloud-settings-fields">
+          <label><input type="checkbox" id="enableWhatsAppPdf" onchange="setWhatsAppPdf(this.checked)" /> Enable WhatsApp PDF bills</label>
+          <p>Show an optional customer number at checkout and allow PDF sharing from saved bills.</p>
+        </div>
       </div>
 
       <div class="card" data-settings-panel="security">
@@ -1258,7 +1271,10 @@
           <option value="Khata">📒 Khata (Credit)</option>
         </select>
       </div>
-      <input type="text" id="custNameMob" placeholder="Customer / Table No. (Optional)" oninput="syncOrderFields('mob')" style="margin-bottom:8px;" />
+      <div class="checkout-customer">
+        <input type="text" id="custNameMob" placeholder="Customer / Table No. (Optional)" oninput="syncOrderFields('mob')" style="margin-bottom:8px;" />
+        <input id="customerPhoneMob" type="tel" aria-label="Customer WhatsApp number" placeholder="WhatsApp number (+91)" maxlength="24" autocomplete="off" oninput="syncOrderFields('mob')" hidden />
+      </div>
       <div id="cartListMob" style="max-height:34vh;overflow-y:auto;"></div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
@@ -1287,6 +1303,7 @@
         <button class="btn btn-outline" onclick="clearCart()">Clear</button>
         <button class="btn btn-green" onclick="closeBillDrawer();checkoutBill(false);">💾 Save Bill</button>
         <button class="btn btn-primary" onclick="closeBillDrawer();checkoutBill(true);">🖨️ Save & Print</button>
+        <button class="btn btn-outline" data-whatsapp-checkout onclick="closeBillDrawer();checkoutBill(true)" hidden>Save &amp; open PDF options</button>
       </div>
     </div>
   </div>
@@ -1373,7 +1390,8 @@
           <button class="btn btn-primary" style="padding:8px;font-size:11px;" onclick="printBluetoothThermal()">📶 BT Thermal Print</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-          <button class="btn btn-green" style="padding:8px;font-size:11px;" onclick="shareWhatsApp()">💬 WhatsApp Bill</button>
+          <button class="btn btn-green" style="padding:8px;font-size:11px;" id="receiptPdfButton" onclick="shareWhatsAppPdf()" hidden>WhatsApp PDF</button>
+          <button class="btn btn-outline" id="receiptCustomerChat" onclick="openCustomerChat()" hidden>Open customer chat</button>
           <button class="btn btn-outline" style="padding:8px;font-size:11px;" onclick="closeModal()">✕ Close</button>
         </div>
       </div>
@@ -1788,6 +1806,11 @@
 
     function applyRolePermissionsUI() {
       const cloudStaff = isCloudStaff();
+      const canConfigure = canConfigureBilling();
+      document.getElementById("billingPreferencesNav").hidden = !canConfigure;
+      document.getElementById("billingPreferencesCard").hidden = !canConfigure;
+      if (!canConfigure && document.getElementById("billingPreferencesNav").getAttribute("aria-pressed") === "true") showSettingsPanel("shop");
+      updateWhatsAppBillingUI();
       for (const tab of ["summary", "expenses", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
       document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
       document.getElementById("cloudStaffAppearance").hidden = !cloudStaff;
@@ -2255,6 +2278,9 @@
     }
 
     function syncOrderFields(src) {
+      const from = src === "desk" ? "Desk" : "Mob";
+      const to = from === "Desk" ? "Mob" : "Desk";
+      document.getElementById("customerPhone" + to).value = document.getElementById("customerPhone" + from).value;
       const other = src === "desk" ? "Mob" : "Desk", cur = src === "desk" ? "Desk" : "Mob";
       document.getElementById("orderType" + other).value = document.getElementById("orderType" + cur).value;
       document.getElementById("payMode" + other).value = document.getElementById("payMode" + cur).value;
@@ -2314,15 +2340,70 @@
     function openBillDrawer() { document.getElementById("billDrawerOverlay").classList.add("open"); }
     function closeBillDrawer() { document.getElementById("billDrawerOverlay").classList.remove("open"); }
 
+    function canConfigureBilling() {
+      return sessionStorage.getItem("tc_session_logged") === "1" && getLoggedAccount().role === "Owner";
+    }
+
+    function whatsAppBillingEnabled() {
+      if (sessionStorage.getItem("tc_session_logged") !== "1") return false;
+      return isCloudStaff() ? typeof RaviCloud !== "undefined" && RaviCloud.staffWhatsAppEnabled() : settings.billingPreferences?.whatsAppPdf === true;
+    }
+
+    function updateWhatsAppBillingUI() {
+      const enabled = whatsAppBillingEnabled();
+      document.getElementById("enableWhatsAppPdf").checked = settings.billingPreferences?.whatsAppPdf === true;
+      for (const id of ["customerPhoneDesk", "customerPhoneMob"]) {
+        const field = document.getElementById(id);
+        field.hidden = !enabled;
+        if (!enabled) field.value = "";
+      }
+      for (const button of document.querySelectorAll("[data-whatsapp-checkout]")) button.hidden = !enabled;
+      const canShareBill = enabled && lastBill && typeof RaviCloud !== "undefined" && RaviCloud.ownsRecord(lastBill);
+      document.getElementById("receiptPdfButton").hidden = !canShareBill;
+      document.getElementById("receiptCustomerChat").hidden = !canShareBill || !validWhatsAppPhone(lastBill?.customerPhone);
+    }
+
+    function setWhatsAppPdf(enabled) {
+      if (!canConfigureBilling() || typeof enabled !== "boolean") {
+        updateWhatsAppBillingUI();
+        return;
+      }
+      const updated = { ...settings, billingPreferences: {
+        whatsAppPdf: enabled,
+        updatedAt: Math.max(Date.now(), (settings.billingPreferences?.updatedAt || 0) + 1)
+      } };
+      if (safeStorageSet("tc_settings", updated)) {
+        settings = updated;
+        triggerBackgroundSync();
+      }
+      updateWhatsAppBillingUI();
+    }
+
+    function validWhatsAppPhone(value) {
+      if (typeof value !== "string") return "";
+      const number = value.replace(/[\s()-]/g, "");
+      if (/^[6-9]\d{9}$/.test(number)) return "+91" + number;
+      if (/^91[6-9]\d{9}$/.test(number)) return "+" + number;
+      return /^\+[1-9]\d{7,14}$/.test(number) ? number : "";
+    }
+
     function checkoutBill(openPrintAfter) {
       if (!cart.length) return showToast("Add items to bill first!");
+      const rawPhone = whatsAppBillingEnabled() ? document.getElementById("customerPhoneDesk").value.trim() : "";
+      const customerPhone = validWhatsAppPhone(rawPhone);
+      if (rawPhone && !customerPhone) {
+        if (matchMedia("(max-width: 840px)").matches) openBillDrawer();
+        showToast("Enter a valid WhatsApp number, or leave it blank.");
+        return;
+      }
       const { itemsSub, packing, discount, gst, grand } = getCartTotals();
       const now = Date.now(), currentShift = getCurrentActiveShift(), loggedAccount = sessionStorage.getItem("tc_logged_username") || "Staff";
       const bill = {
         uid: now + "-" + Math.floor(Math.random() * 10000), timestamp: now, billNo: getNextBillNo(),
         date: getTodayDDMMYYYY(new Date(now)), time: getNowTimeIST(new Date(now)),
         type: document.getElementById("orderTypeDesk").value, mode: document.getElementById("payModeDesk").value,
-        customer: document.getElementById("custNameDesk").value || "Walk-in",
+        customer: document.getElementById("custNameDesk").value.trim().slice(0, 120) || "Walk-in",
+        ...(customerPhone ? { customerPhone } : {}),
         staff: currentShift ? currentShift.name : loggedAccount, device: DEVICE_LABEL,
         items: cart.map(c => ({ id: c.id, name: c.name, cat: c.cat, price: c.price, qty: c.qty })),
         sub: itemsSub, packing, discount, gst, total: grand
@@ -2334,7 +2415,7 @@
         return;
       }
       lastBill = bill; clearCart();
-      document.getElementById("custNameDesk").value = ""; document.getElementById("custNameMob").value = "";
+      for (const id of ["custNameDesk", "custNameMob", "customerPhoneDesk", "customerPhoneMob"]) document.getElementById(id).value = "";
       triggerBackgroundSync();
       if (openPrintAfter) openReceipt(bill); else showToast(`✅ Bill ${bill.billNo} (₹${bill.total}) Saved!`);
     }
@@ -2359,6 +2440,7 @@
         document.getElementById("rQr").src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(upiUrl)}`;
         document.getElementById("rUpiText").textContent = `UPI: ${settings.upi.trim()}`;
       } else { qrBox.style.display = "none"; }
+      updateWhatsAppBillingUI();
       document.getElementById("receiptModal").classList.add("open");
     }
 
@@ -2455,13 +2537,146 @@
       showToast("Printed to Bluetooth Thermal Printer!");
     }
 
-    function shareWhatsApp() {
-      if (!lastBill) return;
-      const lines = lastBill.items.map(i => `• ${i.name} x${i.qty} = ₹${i.price * i.qty}`).join("%0A");
-      const phoneLine = settings.phone ? `%0APh: ${settings.phone}` : "";
-      const extraLines = `${lastBill.packing ? `%0APacking: +₹${lastBill.packing}` : ""}${lastBill.discount ? `%0ADiscount: -₹${lastBill.discount}` : ""}`;
-      const upiLine = settings.upi ? `%0AUPI ID: ${settings.upi}` : "";
-      window.open(`https://wa.me/?text=*${settings.name || "MY SHOP"}*${phoneLine}%0ABill: ${lastBill.billNo} (${lastBill.date})%0A${lines}${extraLines}%0A*Total: ₹${lastBill.total}* (${lastBill.mode})${upiLine}%0AThank you for visiting!`, "_blank");
+    function buildReceiptPdf(bill) {
+      const shop = (isCloudStaff() && RaviCloud.staffReceiptShop()) || settings;
+      const canvas = document.createElement("canvas");
+      canvas.width = 780;
+      canvas.height = 1100;
+      const ctx = canvas.getContext("2d");
+      const pages = [];
+      let y;
+      function startPage() {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#181818";
+        y = 54;
+      }
+      function savePage() {
+        const data = canvas.toDataURL("image/jpeg", 0.86).split(",")[1];
+        pages.push(Uint8Array.from(atob(data), char => char.charCodeAt(0)));
+      }
+      function line(text, bold = false) {
+        ctx.font = (bold ? "bold " : "") + "25px sans-serif";
+        const characters = Array.from(String(text));
+        let row = "";
+        const draw = () => {
+          if (y > 1050) {
+            savePage();
+            startPage();
+          }
+          ctx.fillText(row.trim(), 52, y);
+          y += 35;
+        };
+        for (const char of characters) {
+          if (char === "\n" || (row && ctx.measureText(row + char).width > 676)) {
+            draw();
+            row = "";
+            if (char === "\n") continue;
+          }
+          row += char;
+        }
+        if (row) draw();
+      }
+      const money = amount => "₹" + Number(amount || 0).toFixed(2);
+      startPage();
+      line(shop.name || "MY SHOP", true);
+      if (shop.address) line(shop.address);
+      if (shop.phone) line("Contact: " + shop.phone);
+      if (shop.gstin) line("GSTIN/FSSAI: " + shop.gstin);
+      y += 20;
+      line("Bill " + bill.billNo, true);
+      line([bill.date, bill.time, bill.type, bill.mode].filter(Boolean).join("  •  "));
+      line("Customer: " + (bill.customer || "Walk-in"));
+      if (bill.customerPhone) line("WhatsApp: " + bill.customerPhone);
+      y += 20;
+      for (const item of bill.items) line(item.name + " × " + item.qty + "   " + money(item.price * item.qty));
+      y += 20;
+      line("Subtotal  " + money(bill.sub));
+      if (bill.packing) line("Packing  " + money(bill.packing));
+      if (bill.discount) line("Discount  −" + money(bill.discount));
+      if (bill.gst) line("GST  " + money(bill.gst));
+      line("Total  " + money(bill.total), true);
+      if (shop.upi) line("UPI: " + shop.upi);
+      line("Thank you! Visit again.");
+      savePage();
+
+      const encoder = new TextEncoder();
+      const chunks = [];
+      const offsets = [0];
+      let length = 0;
+      function append(value) {
+        const bytes = typeof value === "string" ? encoder.encode(value) : value;
+        chunks.push(bytes);
+        length += bytes.length;
+      }
+      function object(id, ...parts) {
+        offsets[id] = length;
+        append(id + " 0 obj\n");
+        for (const part of parts) append(part);
+        append("\nendobj\n");
+      }
+      append("%PDF-1.4\n");
+      object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+      object(2, "<< /Type /Pages /Count " + pages.length + " /Kids [" + pages.map((_, index) => (3 + index * 3) + " 0 R").join(" ") + "] >>");
+      pages.forEach((jpeg, index) => {
+        const id = 3 + index * 3;
+        const commands = "q 595 0 0 842 0 0 cm /BillImage Do Q\n";
+        object(id, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /BillImage " + (id + 2) + " 0 R >> >> /Contents " + (id + 1) + " 0 R >>");
+        object(id + 1, "<< /Length " + commands.length + " >>\nstream\n", commands, "endstream");
+        object(id + 2, "<< /Type /XObject /Subtype /Image /Width 780 /Height 1100 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + jpeg.length + " >>\nstream\n", jpeg, "\nendstream");
+      });
+      const xref = length;
+      append("xref\n0 " + offsets.length + "\n0000000000 65535 f \n");
+      for (const offset of offsets.slice(1)) append(String(offset).padStart(10, "0") + " 00000 n \n");
+      append("trailer\n<< /Size " + offsets.length + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+      return new Blob(chunks, { type: "application/pdf" });
+    }
+
+    function openCustomerChat() {
+      const phone = validWhatsAppPhone(lastBill?.customerPhone);
+      if (!whatsAppBillingEnabled() || !phone || !RaviCloud.ownsRecord(lastBill)) return;
+      window.open("https://wa.me/" + phone.slice(1), "_blank", "noopener,noreferrer");
+    }
+
+    async function shareWhatsAppPdf() {
+      if (!whatsAppBillingEnabled() || !lastBill || !RaviCloud.ownsRecord(lastBill)) return;
+      const button = document.getElementById("receiptPdfButton");
+      if (button.disabled) return;
+      const bill = lastBill;
+      button.disabled = true;
+      try {
+        const bytes = buildReceiptPdf(bill);
+        const name = String(bill.billNo || "bill").replace(/[^a-z0-9_-]/gi, "-");
+        const filename = "RAVI-" + name + ".pdf";
+        const native = globalThis.Capacitor;
+        if (native?.isNativePlatform?.()) {
+          const { Filesystem, Share } = native.Plugins;
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(reader.error);
+            reader.onload = () => resolve(reader.result.split(",")[1]);
+            reader.readAsDataURL(bytes);
+          });
+          if (!whatsAppBillingEnabled() || lastBill !== bill) return;
+          const { uri } = await Filesystem.writeFile({ path: filename, data, directory: "CACHE" });
+          if (!whatsAppBillingEnabled() || lastBill !== bill) return;
+          await Share.share({ title: "Bill " + bill.billNo, files: [uri], dialogTitle: "Share bill PDF" });
+        } else {
+          const file = new File([bytes], filename, { type: "application/pdf" });
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: "Bill " + bill.billNo });
+          } else {
+            await saveOrShareFile(bytes, filename, "application/pdf");
+            showToast("PDF saved. Open the customer chat and attach the file.");
+          }
+        }
+      } catch (error) {
+        if (error.name !== "AbortError" && !/cancell?ed/i.test(error.message || "")) {
+          showToast("Could not share the PDF. The bill is still saved.");
+        }
+      } finally {
+        button.disabled = false;
+      }
     }
 
     function clearDateFilter() { document.getElementById("filterFromDate").value = ""; document.getElementById("filterToDate").value = ""; billsLimit = 60; renderSummary(); }
@@ -2773,6 +2988,7 @@
           bills: bills.filter(row => !row.cloud),
           expenses,
           attendance: attendance.filter(row => !row.cloud),
+          ...(settings.billingPreferences ? { billingPreferences: settings.billingPreferences } : {}),
           settings: { name: settings.name, phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
@@ -2833,6 +3049,11 @@
         attendance.forEach(a => attMap.set(a.uid, a));
         remote.attendance.forEach(ra => { const localAtt = attMap.get(ra.uid); if (!localAtt || (ra.updatedAt || 0) > (localAtt.updatedAt || 0)) attMap.set(ra.uid, ra); });
         attendance = Array.from(attMap.values()).sort((a, b) => (b.inTimestamp || 0) - (a.inTimestamp || 0)); safeStorageSet("tc_attendance", attendance);
+      }
+      if (remote.billingPreferences && (remote.billingPreferences.updatedAt || 0) > (settings.billingPreferences?.updatedAt || 0)) {
+        settings.billingPreferences = remote.billingPreferences;
+        safeStorageSet("tc_settings", settings);
+        updateWhatsAppBillingUI();
       }
       if (remote.settings && (remote.settings.updatedAt || 0) > (settings.updatedAt || 0)) {
         settings.name = remote.settings.name || settings.name; settings.phone = remote.settings.phone || ""; settings.address = remote.settings.address || settings.address; settings.upi = remote.settings.upi || ""; settings.gstin = remote.settings.gstin || ""; settings.updatedAt = remote.settings.updatedAt;

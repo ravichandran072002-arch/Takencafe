@@ -106,6 +106,9 @@ function raviStaffDigest(secret, id, password) {
 
 function raviMergeBackup(saved, incoming) {
   const merged = { ...saved, ...incoming };
+  if (saved.billingPreferences && (saved.billingPreferences.updatedAt || 0) >= (incoming.billingPreferences?.updatedAt || 0)) {
+    merged.billingPreferences = saved.billingPreferences;
+  }
   delete merged.authUsers;
   delete merged.deletedUserIds;
   delete merged.empty;
@@ -150,6 +153,7 @@ function raviStaffRows(rows, id, kind) {
     return {
       ...base, timestamp: date(row.timestamp), time: text(row.time, 24), billNo: text(row.billNo, 48), staff: id,
       type: text(row.type, 32), mode: text(row.mode, 32), customer: text(row.customer),
+      ...(typeof row.customerPhone === "string" && /^\+[1-9]\d{7,14}$/.test(row.customerPhone) ? { customerPhone: row.customerPhone } : {}),
       items: row.items.map(item => ({ id: text(item.id, 48), name: text(item.name), cat: text(item.cat), price: number(item.price), qty: number(item.qty, 100000) })),
       sub: number(row.sub), packing: number(row.packing), discount: number(row.discount), gst: number(row.gst), total: number(row.total)
     };
@@ -161,7 +165,12 @@ function raviStaffSync(req) {
   const attendance = raviStaffRows(req.attendance, req.id, "attendance");
   const current = readBackup();
   if (bills.length || attendance.length) writeBackup(raviMergeBackup(current, { bills, attendance }), false);
-  return raviReply({ ok: true, menu: current.menu });
+  const whatsAppPdf = current.billingPreferences?.whatsAppPdf === true;
+  const shop = current.settings;
+  const receiptShop = whatsAppPdf && shop ? {
+    name: shop.name, address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi
+  } : undefined;
+  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop });
 }
 
 function raviRole(props, id) {
@@ -296,6 +305,12 @@ function doPost(e) {
         const data = req.data;
         delete data.authUsers;
         delete data.deletedUserIds;
+        const preferences = data.billingPreferences;
+        if (typeof preferences?.whatsAppPdf !== "boolean" || !Number.isSafeInteger(preferences.updatedAt) || preferences.updatedAt <= 0) {
+          delete data.billingPreferences;
+        } else {
+          data.billingPreferences = { whatsAppPdf: preferences.whatsAppPdf, updatedAt: preferences.updatedAt };
+        }
         if (!/^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(data.backupFileName || "")) delete data.backupFileName;
         const merged = raviMergeBackup(readBackup(), data);
         writeBackup(merged, true);
