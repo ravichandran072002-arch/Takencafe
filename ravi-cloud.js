@@ -186,6 +186,15 @@ function doPost(e) {
     if (!req || req.protocol !== RAVI_PROTOCOL || !/^[a-f0-9]{64}$/.test(ownerKey || "")
         || !/^[a-f0-9]{64}$/.test(staffPepper || "") || ownerKey === staffPepper) return raviReply(bad);
 
+    if (req.action === "staff.login" && typeof req.password === "string"
+        && typeof req.ownerKey === "undefined" && typeof req.deviceToken === "undefined") {
+      // Read the password and role from the same snapshot without waiting for a data write.
+      const values = props.getProperties();
+      const snapshot = { getProperty: key => values[key] };
+      return raviReply(raviVerifyAccount(snapshot, staffPepper, req)
+        ? { ok: true, staffId: req.id, role: raviRole(snapshot, req.id) } : bad);
+    }
+
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
@@ -385,12 +394,19 @@ function doPost(e) {
     if ((action === "device.enroll" || fields.deviceToken) && info.devicePin !== true) {
       throw Error("The shop owner must deploy the PIN update before you can use a PIN.");
     }
-    const response = await fetchWithTimeout(endpoint, {
+    const options = {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ protocol, action, ...fields })
-    }, 15000);
-    const result = await response.json();
+    };
+    let response, result;
+    // A busy response happens before the server handles the request, so only that result is safe to retry.
+    for (const delay of [0, 350, 800, 1600]) {
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay + Math.random() * 150));
+      response = await fetchWithTimeout(endpoint, options, 15000);
+      result = await response.json();
+      if (result?.reason !== "busy") break;
+    }
     if (!response.ok || result?.ok !== true) {
       if (result?.reason === "exists") throw Error("That Staff ID already exists. Revoke it before replacing the password.");
       if (result?.reason === "revoked") {

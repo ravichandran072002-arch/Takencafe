@@ -261,6 +261,15 @@ function doPost(e) {
     if (!req || req.protocol !== RAVI_PROTOCOL || !/^[a-f0-9]{64}$/.test(ownerKey || "")
         || !/^[a-f0-9]{64}$/.test(staffPepper || "") || ownerKey === staffPepper) return raviReply(bad);
 
+    if (req.action === "staff.login" && typeof req.password === "string"
+        && typeof req.ownerKey === "undefined" && typeof req.deviceToken === "undefined") {
+      // Read the password and role from the same snapshot without waiting for a data write.
+      const values = props.getProperties();
+      const snapshot = { getProperty: key => values[key] };
+      return raviReply(raviVerifyAccount(snapshot, staffPepper, req)
+        ? { ok: true, staffId: req.id, role: raviRole(snapshot, req.id) } : bad);
+    }
+
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(5000)) return raviReply({ ok: false, reason: "busy" });
     try {
