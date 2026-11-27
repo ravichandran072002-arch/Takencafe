@@ -1,8 +1,11 @@
 const FOLDER_NAME = "TakenCafe_POS_Drive_Sync";
 const LIVE_FILE = "TakenCafe_Live_Sync.json";
 const SHEET_NAME = "RAVI_POS_Live_Sheet";
+const RAVI_MEMBER_LIMIT = 5;
 
 function getOrCreateFolder() {
+  const id = PropertiesService.getScriptProperties().getProperty("RAVI_STORAGE_FOLDER_ID");
+  if (id) return DriveApp.getFolderById(id);
   const folders = DriveApp.getFoldersByName(FOLDER_NAME);
   return folders.hasNext() ? folders.next() : DriveApp.createFolder(FOLDER_NAME);
 }
@@ -91,23 +94,32 @@ function readBackup() {
 function writeBackup(body, archive, changes) {
   const folder = getOrCreateFolder();
   const properties = PropertiesService.getScriptProperties();
-  if (changes && properties.getProperty("RAVI_SHEET_DIRTY")) changes = undefined;
-  properties.setProperty("RAVI_SHEET_DIRTY", "1");
+  if (!properties.getProperty("RAVI_STORAGE_FOLDER_ID")) {
+    properties.setProperty("RAVI_STORAGE_FOLDER_ID", folder.getId());
+  }
   const jsonStr = JSON.stringify(body);
   const liveFiles = folder.getFilesByName(LIVE_FILE);
-  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);
-  if (archive && body.backupFileName) {
-    const exportFolder = body.exportSettings ? DriveApp.getFolderById(body.exportSettings.folderId) : folder;
-    const archiveName = body.exportSettings ? String(body.settings?.name || "RAVI POS").slice(0,60) + "_" + body.backupFileName.slice(10) : body.backupFileName;
-    const archiveData = body.exportSettings ? JSON.stringify({ ...body, shopEntries: (body.shopEntries || []).filter(row => row.kind !== "message") }) : jsonStr;
-    const bFiles = exportFolder.getFilesByName(archiveName);
-    if (bFiles.hasNext()) bFiles.next().setContent(archiveData); else exportFolder.createFile(archiveName, archiveData, MimeType.PLAIN_TEXT);
+  if (body.exportSettings?.backgroundReports) {
+    const revision = Utilities.getUuid();
+    properties.setProperty("RAVI_SHEET_DIRTY", "1");
+    if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);
+    properties.setProperty("RAVI_REPORT_REVISION", revision);
+    properties.deleteProperty("RAVI_SHEET_DIRTY");
+    return;
   }
+  if (changes && properties.getProperty("RAVI_SHEET_DIRTY")) changes = undefined;
+  properties.setProperty("RAVI_SHEET_DIRTY", "1");
+  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);
+  if (archive && body.backupFileName) raviWriteArchive(folder, body.backupFileName, jsonStr);
   updateLiveSheetFromBody(folder, body, changes);
   properties.deleteProperty("RAVI_SHEET_DIRTY");
   if (body.exportSettings?.autoExcel) properties.setProperty("RAVI_XLSX_REVISION", Utilities.getUuid());
 }
 
+function raviWriteArchive(folder, name, contents) {
+  const files = folder.getFilesByName(name);
+  if (files.hasNext()) files.next().setContent(contents); else folder.createFile(name, contents, MimeType.PLAIN_TEXT);
+}
 
 function raviExportWorkbook(current, props) {
   const folder = current.exportSettings ? DriveApp.getFolderById(current.exportSettings.folderId) : getOrCreateFolder();
@@ -141,12 +153,25 @@ function raviRefreshExcel() {
   if (!lock.tryLock(1)) return;
   try {
     const props = PropertiesService.getScriptProperties();
-    const revision = props.getProperty("RAVI_XLSX_REVISION");
-    if (!revision || revision === props.getProperty("RAVI_XLSX_EXPORTED_REVISION")) return;
+    const revision = props.getProperty("RAVI_REPORT_REVISION");
+    if (revision && revision !== props.getProperty("RAVI_REPORT_EXPORTED_REVISION")) {
+      const current = readBackup();
+      const folder = getOrCreateFolder();
+      const archive = current.backupFileName;
+      if (archive && /^TakenCafe_AutoBackup_\d{4}-\d{2}-\d{2}\.json$/.test(archive)) {
+        raviWriteArchive(folder, archive, JSON.stringify(current));
+      }
+      updateLiveSheetFromBody(folder, current);
+      if (current.exportSettings?.autoExcel) raviExportWorkbook(current, props);
+      props.setProperty("RAVI_REPORT_EXPORTED_REVISION", revision);
+      return;
+    }
+    const excelRevision = props.getProperty("RAVI_XLSX_REVISION");
+    if (!excelRevision || excelRevision === props.getProperty("RAVI_XLSX_EXPORTED_REVISION")) return;
     const current = readBackup();
-    if (!current.exportSettings?.autoExcel) return;
+    if (!current.exportSettings?.autoExcel || current.exportSettings?.backgroundReports) return;
     raviExportWorkbook(current, props);
-    props.setProperty("RAVI_XLSX_EXPORTED_REVISION", revision);
+    props.setProperty("RAVI_XLSX_EXPORTED_REVISION", excelRevision);
   } finally {
     lock.releaseLock();
   }
@@ -159,7 +184,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, memberLimit: RAVI_MEMBER_LIMIT });
 }
 
 function raviEqual(left, right) {
@@ -265,6 +290,18 @@ function raviStaffSync(req) {
   const shopEntries = (current.shopEntries || []).filter(row => row.kind === "stock"
     || (["advance", "message"].includes(row.kind) && row.recipient === req.id));
   return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, shopEntries, shopOperations: true });
+}
+
+function raviActiveMemberCount(props) {
+  const values = props.getProperties();
+  const primary = values.RAVI_PRIMARY_ID;
+  let count = 1;
+  for (const key of Object.keys(values)) {
+    if (!key.startsWith("staff:")) continue;
+    const id = key.slice(6);
+    if (id !== primary && !values["revoked:" + id]) count++;
+  }
+  return count;
 }
 
 function raviRole(props, id) {
@@ -420,10 +457,10 @@ function doPost(e) {
           props.setProperty("RAVI_CREATED_EXPORT_FOLDER", folder.getId());
         }
         const autoExcel = req.autoExcel === true;
-        if (autoExcel && !ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === "raviRefreshExcel")) {
+        if (!ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === "raviRefreshExcel")) {
           ScriptApp.newTrigger("raviRefreshExcel").timeBased().everyMinutes(5).create();
         }
-        current.exportSettings = { folderId: folder.getId(), tabs, autoExcel };
+        current.exportSettings = { folderId: folder.getId(), tabs, autoExcel, backgroundReports: true };
         delete current.empty;
         writeBackup(current, false);
         return raviReply({ ok: true, folderName: folder.getName(), folderId: folder.getId() });
@@ -437,7 +474,7 @@ function doPost(e) {
           const pin = JSON.parse(props.getProperty("staff-pin:" + id) || "null");
           return roles[id] === "staff" && pin && !pin.approved;
         }) : [];
-        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins, revokedIds });
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins, revokedIds, activeCount: raviActiveMemberCount(props), memberLimit: RAVI_MEMBER_LIMIT });
       }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
@@ -486,6 +523,9 @@ function doPost(e) {
       const targetRole = raviRole(props, target);
       const revokedKey = "revoked:" + target;
       if (req.action === "staff.restore" && targetRole === "staff" && props.getProperty(key)) {
+        if (props.getProperty(revokedKey) && raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) {
+          return raviReply({ ok: false, reason: "member-limit" });
+        }
         props.deleteProperty(revokedKey);
         return raviReply({ ok: true });
       }
@@ -494,6 +534,7 @@ function doPost(e) {
         if (role !== "primary" || targetRole !== "staff" || !/^\d{4}$/.test(req.assignedPin || "")) return raviReply(bad);
         const created = !props.getProperty(key);
         if (created) {
+          if (raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) return raviReply({ ok: false, reason: "member-limit" });
           if (!/^[A-Za-z0-9_-]{24}$/.test(req.recoveryPassword || "")) return raviReply(bad);
           props.setProperty(key, raviStaffDigest(staffPepper, target, req.recoveryPassword));
         }
@@ -524,6 +565,7 @@ function doPost(e) {
         const digest = raviStaffDigest(staffPepper, target, password);
         const existing = props.getProperty(key);
         if (existing && !raviEqual(existing, digest)) return raviReply({ ok: false, reason: "exists" });
+        if (!existing && raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) return raviReply({ ok: false, reason: "member-limit" });
         props.setProperty(key, digest);
         return raviReply({ ok: true });
       }

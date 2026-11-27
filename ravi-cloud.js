@@ -19,7 +19,7 @@ const RaviCloud = (() => {
     "}",
     "",
     "function doGet(e) {",
-    "  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true });",
+    "  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, memberLimit: RAVI_MEMBER_LIMIT });",
     "}",
     "",
     "function raviEqual(left, right) {",
@@ -125,6 +125,18 @@ const RaviCloud = (() => {
     "  const shopEntries = (current.shopEntries || []).filter(row => row.kind === \"stock\"",
     "    || ([\"advance\", \"message\"].includes(row.kind) && row.recipient === req.id));",
     "  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, shopEntries, shopOperations: true });",
+    "}",
+    "",
+    "function raviActiveMemberCount(props) {",
+    "  const values = props.getProperties();",
+    "  const primary = values.RAVI_PRIMARY_ID;",
+    "  let count = 1;",
+    "  for (const key of Object.keys(values)) {",
+    "    if (!key.startsWith(\"staff:\")) continue;",
+    "    const id = key.slice(6);",
+    "    if (id !== primary && !values[\"revoked:\" + id]) count++;",
+    "  }",
+    "  return count;",
     "}",
     "",
     "function raviRole(props, id) {",
@@ -280,10 +292,10 @@ const RaviCloud = (() => {
     "          props.setProperty(\"RAVI_CREATED_EXPORT_FOLDER\", folder.getId());",
     "        }",
     "        const autoExcel = req.autoExcel === true;",
-    "        if (autoExcel && !ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === \"raviRefreshExcel\")) {",
+    "        if (!ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === \"raviRefreshExcel\")) {",
     "          ScriptApp.newTrigger(\"raviRefreshExcel\").timeBased().everyMinutes(5).create();",
     "        }",
-    "        current.exportSettings = { folderId: folder.getId(), tabs, autoExcel };",
+    "        current.exportSettings = { folderId: folder.getId(), tabs, autoExcel, backgroundReports: true };",
     "        delete current.empty;",
     "        writeBackup(current, false);",
     "        return raviReply({ ok: true, folderName: folder.getName(), folderId: folder.getId() });",
@@ -297,7 +309,7 @@ const RaviCloud = (() => {
     "          const pin = JSON.parse(props.getProperty(\"staff-pin:\" + id) || \"null\");",
     "          return roles[id] === \"staff\" && pin && !pin.approved;",
     "        }) : [];",
-    "        return raviReply({ ok: true, ids, roles, canManageOwners: role === \"primary\", pendingPins, revokedIds });",
+    "        return raviReply({ ok: true, ids, roles, canManageOwners: role === \"primary\", pendingPins, revokedIds, activeCount: raviActiveMemberCount(props), memberLimit: RAVI_MEMBER_LIMIT });",
     "      }",
     "      if (req.action === \"backup.write\" && req.data && typeof req.data === \"object\" && !Array.isArray(req.data)) {",
     "        const data = req.data;",
@@ -346,6 +358,9 @@ const RaviCloud = (() => {
     "      const targetRole = raviRole(props, target);",
     "      const revokedKey = \"revoked:\" + target;",
     "      if (req.action === \"staff.restore\" && targetRole === \"staff\" && props.getProperty(key)) {",
+    "        if (props.getProperty(revokedKey) && raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) {",
+    "          return raviReply({ ok: false, reason: \"member-limit\" });",
+    "        }",
     "        props.deleteProperty(revokedKey);",
     "        return raviReply({ ok: true });",
     "      }",
@@ -354,6 +369,7 @@ const RaviCloud = (() => {
     "        if (role !== \"primary\" || targetRole !== \"staff\" || !/^\\d{4}$/.test(req.assignedPin || \"\")) return raviReply(bad);",
     "        const created = !props.getProperty(key);",
     "        if (created) {",
+    "          if (raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) return raviReply({ ok: false, reason: \"member-limit\" });",
     "          if (!/^[A-Za-z0-9_-]{24}$/.test(req.recoveryPassword || \"\")) return raviReply(bad);",
     "          props.setProperty(key, raviStaffDigest(staffPepper, target, req.recoveryPassword));",
     "        }",
@@ -384,6 +400,7 @@ const RaviCloud = (() => {
     "        const digest = raviStaffDigest(staffPepper, target, password);",
     "        const existing = props.getProperty(key);",
     "        if (existing && !raviEqual(existing, digest)) return raviReply({ ok: false, reason: \"exists\" });",
+    "        if (!existing && raviActiveMemberCount(props) >= RAVI_MEMBER_LIMIT) return raviReply({ ok: false, reason: \"member-limit\" });",
     "        props.setProperty(key, digest);",
     "        return raviReply({ ok: true });",
     "      }",
@@ -488,6 +505,7 @@ const RaviCloud = (() => {
         error.revoked = true;
         throw error;
       }
+      if (result?.reason === "member-limit") throw Error("This shop has five active members. Revoke a staff account to free a slot.");
       if (result?.reason === "busy") throw Error("The shop server is busy. Please try again.");
       throw Error(action === "staff.login" ? "Invalid Staff ID or password." : "Owner access was rejected. Check your owner key.");
     }
@@ -815,8 +833,11 @@ const RaviCloud = (() => {
     }
 
     async function refreshList(endpoint) {
-      const { ids, roles, canManageOwners, pendingPins, revokedIds } = await owner(endpoint, "staff.list");
+      const { ids, roles, canManageOwners, pendingPins, revokedIds, activeCount, memberLimit } = await owner(endpoint, "staff.list");
       if (!isOwner() || endpoint !== shopLink()) return;
+      const count = byId("shopMemberCount");
+      count.hidden = !Number.isInteger(activeCount) || !Number.isInteger(memberLimit);
+      count.textContent = count.hidden ? "" : activeCount + " of " + memberLimit + " active members, including the owner";
       const list = byId("cloudStaffList");
       const expanded = new Set([...list.querySelectorAll("details[open]")].map(row => row.dataset.account));
       list.replaceChildren();

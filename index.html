@@ -1163,6 +1163,7 @@
                 <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
               </div>
               <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
+              <p id="shopMemberCount" role="status" hidden></p>
               <ul id="cloudStaffList" class="user-list"></ul>
             </section>
             <p id="staffSearchEmpty" role="status" hidden>No matching login IDs.</p>
@@ -1598,8 +1599,11 @@
       "const FOLDER_NAME = \"TakenCafe_POS_Drive_Sync\";",
       "const LIVE_FILE = \"TakenCafe_Live_Sync.json\";",
       "const SHEET_NAME = \"RAVI_POS_Live_Sheet\";",
+      "const RAVI_MEMBER_LIMIT = 5;",
       "",
       "function getOrCreateFolder() {",
+      "  const id = PropertiesService.getScriptProperties().getProperty(\"RAVI_STORAGE_FOLDER_ID\");",
+      "  if (id) return DriveApp.getFolderById(id);",
       "  const folders = DriveApp.getFoldersByName(FOLDER_NAME);",
       "  return folders.hasNext() ? folders.next() : DriveApp.createFolder(FOLDER_NAME);",
       "}",
@@ -1688,23 +1692,32 @@
       "function writeBackup(body, archive, changes) {",
       "  const folder = getOrCreateFolder();",
       "  const properties = PropertiesService.getScriptProperties();",
-      "  if (changes && properties.getProperty(\"RAVI_SHEET_DIRTY\")) changes = undefined;",
-      "  properties.setProperty(\"RAVI_SHEET_DIRTY\", \"1\");",
+      "  if (!properties.getProperty(\"RAVI_STORAGE_FOLDER_ID\")) {",
+      "    properties.setProperty(\"RAVI_STORAGE_FOLDER_ID\", folder.getId());",
+      "  }",
       "  const jsonStr = JSON.stringify(body);",
       "  const liveFiles = folder.getFilesByName(LIVE_FILE);",
-      "  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);",
-      "  if (archive && body.backupFileName) {",
-      "    const exportFolder = body.exportSettings ? DriveApp.getFolderById(body.exportSettings.folderId) : folder;",
-      "    const archiveName = body.exportSettings ? String(body.settings?.name || \"RAVI POS\").slice(0,60) + \"_\" + body.backupFileName.slice(10) : body.backupFileName;",
-      "    const archiveData = body.exportSettings ? JSON.stringify({ ...body, shopEntries: (body.shopEntries || []).filter(row => row.kind !== \"message\") }) : jsonStr;",
-      "    const bFiles = exportFolder.getFilesByName(archiveName);",
-      "    if (bFiles.hasNext()) bFiles.next().setContent(archiveData); else exportFolder.createFile(archiveName, archiveData, MimeType.PLAIN_TEXT);",
+      "  if (body.exportSettings?.backgroundReports) {",
+      "    const revision = Utilities.getUuid();",
+      "    properties.setProperty(\"RAVI_SHEET_DIRTY\", \"1\");",
+      "    if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);",
+      "    properties.setProperty(\"RAVI_REPORT_REVISION\", revision);",
+      "    properties.deleteProperty(\"RAVI_SHEET_DIRTY\");",
+      "    return;",
       "  }",
+      "  if (changes && properties.getProperty(\"RAVI_SHEET_DIRTY\")) changes = undefined;",
+      "  properties.setProperty(\"RAVI_SHEET_DIRTY\", \"1\");",
+      "  if (liveFiles.hasNext()) liveFiles.next().setContent(jsonStr); else folder.createFile(LIVE_FILE, jsonStr, MimeType.PLAIN_TEXT);",
+      "  if (archive && body.backupFileName) raviWriteArchive(folder, body.backupFileName, jsonStr);",
       "  updateLiveSheetFromBody(folder, body, changes);",
       "  properties.deleteProperty(\"RAVI_SHEET_DIRTY\");",
       "  if (body.exportSettings?.autoExcel) properties.setProperty(\"RAVI_XLSX_REVISION\", Utilities.getUuid());",
       "}",
       "",
+      "function raviWriteArchive(folder, name, contents) {",
+      "  const files = folder.getFilesByName(name);",
+      "  if (files.hasNext()) files.next().setContent(contents); else folder.createFile(name, contents, MimeType.PLAIN_TEXT);",
+      "}",
       "",
       "function raviExportWorkbook(current, props) {",
       "  const folder = current.exportSettings ? DriveApp.getFolderById(current.exportSettings.folderId) : getOrCreateFolder();",
@@ -1738,12 +1751,25 @@
       "  if (!lock.tryLock(1)) return;",
       "  try {",
       "    const props = PropertiesService.getScriptProperties();",
-      "    const revision = props.getProperty(\"RAVI_XLSX_REVISION\");",
-      "    if (!revision || revision === props.getProperty(\"RAVI_XLSX_EXPORTED_REVISION\")) return;",
+      "    const revision = props.getProperty(\"RAVI_REPORT_REVISION\");",
+      "    if (revision && revision !== props.getProperty(\"RAVI_REPORT_EXPORTED_REVISION\")) {",
+      "      const current = readBackup();",
+      "      const folder = getOrCreateFolder();",
+      "      const archive = current.backupFileName;",
+      "      if (archive && /^TakenCafe_AutoBackup_\\d{4}-\\d{2}-\\d{2}\\.json$/.test(archive)) {",
+      "        raviWriteArchive(folder, archive, JSON.stringify(current));",
+      "      }",
+      "      updateLiveSheetFromBody(folder, current);",
+      "      if (current.exportSettings?.autoExcel) raviExportWorkbook(current, props);",
+      "      props.setProperty(\"RAVI_REPORT_EXPORTED_REVISION\", revision);",
+      "      return;",
+      "    }",
+      "    const excelRevision = props.getProperty(\"RAVI_XLSX_REVISION\");",
+      "    if (!excelRevision || excelRevision === props.getProperty(\"RAVI_XLSX_EXPORTED_REVISION\")) return;",
       "    const current = readBackup();",
-      "    if (!current.exportSettings?.autoExcel) return;",
+      "    if (!current.exportSettings?.autoExcel || current.exportSettings?.backgroundReports) return;",
       "    raviExportWorkbook(current, props);",
-      "    props.setProperty(\"RAVI_XLSX_EXPORTED_REVISION\", revision);",
+      "    props.setProperty(\"RAVI_XLSX_EXPORTED_REVISION\", excelRevision);",
       "  } finally {",
       "    lock.releaseLock();",
       "  }",
@@ -3264,7 +3290,7 @@
       save.disabled = true;
       try {
         const result = await RaviCloud.owner(settings.gdriveUrl, "exports.configure", { folderId, tabs, autoExcel: data.has("autoExcel"), shopName: settings.name });
-        status.textContent = "Reports will update in " + result.folderName + ". Existing reports remain in Drive.";
+        status.textContent = "Reports will update in " + result.folderName + " in the background, usually within five minutes.";
         form.elements.folder.value = result.folderId;
       } catch (error) {
         status.textContent = "Could not save the export folder. Check its access and the Apps Script deployment.";
@@ -3304,8 +3330,6 @@
       document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
         if (RaviCloud.isOnlineOwner()) await RaviCloud.syncStaff();
-        const backup = await RaviCloud.owner(settings.gdriveUrl, "backup.read");
-        if (backup.data && !backup.data.empty) await mergeTwoWayData(backup.data);
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
@@ -3321,7 +3345,9 @@
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
         if (saved.data) await mergeTwoWayData(saved.data);
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
-        showOwnerSyncStatus("synced", `Synced at ${getNowTimeIST()}. Google Sheet updated.`);
+        showOwnerSyncStatus("synced", saved.data?.exportSettings?.backgroundReports
+          ? `Data synced at ${getNowTimeIST()}. Reports refresh in the background.`
+          : `Synced at ${getNowTimeIST()}. Google Sheet updated.`);
         if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
         document.getElementById("syncStatusBadge").textContent = "☁️ Pending";
