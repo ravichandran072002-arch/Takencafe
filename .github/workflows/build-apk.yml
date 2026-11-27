@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main, qa/js-syntax-validation, fix/ravi-branding-security-desktop ]
   workflow_dispatch:
+    inputs:
+      signed_release:
+        description: Build with the permanent RAVI POS signing key
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -81,6 +86,7 @@ jobs:
           python3 -m json.tool www/manifest.json > /dev/null
 
       - name: Build Debug APK
+        if: inputs.signed_release != true
         run: |
           cd android
           chmod +x gradlew
@@ -90,12 +96,44 @@ jobs:
           done
           exit 1
 
-      - name: Name APK for download
+      - name: Name debug APK for download
+        if: inputs.signed_release != true
         run: cp android/app/build/outputs/apk/debug/app-debug.apk RAVI-POS.apk
+
+      - name: Build and verify signed release APK
+        if: inputs.signed_release == true
+        env:
+          RAVI_KEYSTORE_B64: ${{ secrets.RAVI_ANDROID_KEYSTORE_BASE64 }}
+          RAVI_KEYSTORE_PASSWORD: ${{ secrets.RAVI_ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RAVI_KEYSTORE_B64" || -z "$RAVI_KEYSTORE_PASSWORD" ]]; then
+            echo "::error::Configure the RAVI Android signing secrets before building a signed APK."
+            exit 1
+          fi
+          (
+            cd android
+            chmod +x gradlew
+            env -u RAVI_KEYSTORE_B64 -u RAVI_KEYSTORE_PASSWORD ./gradlew assembleRelease
+          )
+          sdk_tools="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$sdk_tools" ]]; then
+            echo "::error::Android SDK apksigner was not found."
+            exit 1
+          fi
+          signing_dir="$(mktemp -d "$RUNNER_TEMP/ravi-signing.XXXXXX")"
+          trap 'rm -rf "$signing_dir"' EXIT
+          umask 077
+          printf '%s' "$RAVI_KEYSTORE_B64" | base64 --decode > "$signing_dir/ravi-pos-release.p12"
+          unset RAVI_KEYSTORE_B64
+          "${sdk_tools%/*}/zipalign" -f -P 16 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$signing_dir/aligned.apk"
+          "$sdk_tools" sign --ks "$signing_dir/ravi-pos-release.p12" --ks-type PKCS12 --ks-key-alias ravi-pos             --ks-pass env:RAVI_KEYSTORE_PASSWORD --out RAVI-POS.apk "$signing_dir/aligned.apk"
+          unset RAVI_KEYSTORE_PASSWORD
+          "$sdk_tools" verify --print-certs RAVI-POS.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: RAVI-POS-Fresh-APK
+          name: ${{ inputs.signed_release && 'RAVI-POS-Signed-APK' || 'RAVI-POS-Fresh-APK' }}
           path: RAVI-POS.apk
           if-no-files-found: error
