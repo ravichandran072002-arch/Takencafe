@@ -41,10 +41,10 @@ Deploy this version of `Code.gs` to the existing web app and update the app on b
 - **Transfer ownership to [staff ID]** changes the primary owner immediately. That person signs in under **Staff / online** with their existing ID and password and gets the Owner screen. The previous primary owner's online Owner access ends. If they had an online account, it becomes Staff. The old setup key can no longer authorize online owner requests after transfer.
 - Google Drive and Apps Script stay under the current Google account. The app transfer shares authorized shop access, and existing offline records already on a former owner's device remain on that device.
 
-## 4-digit PIN on a device
+## Staff ID and 4-digit PIN
 
-The primary Owner, co-owners, and Staff can use a PIN under **Staff / online**. Deploy the latest `Code.gs` first.
+Deploy the latest `Code.gs` to your existing web app. In the primary Owner's settings, refresh the staff list, enter the **Online Staff ID** and **4-digit Staff PIN**, and tap **Set Staff ID & PIN**. Tap **Approve staff PIN** beside the account once. Staff can then select **4-digit PIN** and use the same ID and PIN on any device with internet access.
 
-1. On the device, select **Password**, enter the existing online ID and password, and check **Set up a PIN on this device**.
-2. Enter and confirm your 4-digit PIN, then sign in. The device remembers its registration. Later, select **4-digit PIN** and enter the same ID and PIN.
-3. On new devices, after five wrong PIN attempts, or after 90 days, use the original account password to register again. PIN sign-in needs internet. The PIN itself is never saved on the device.
+Changing the PIN requires fresh approval. Five wrong attempts in an hour temporarily lock PIN sign-in for the account across all devices. To remove a Staff account, tap **Revoke** in the staff list. This disables online sign-in and sync immediately. A device that is offline will see the change when it contacts the server.
+
+Primary Owners and co-owners can set up a device PIN using their account password. For a Staff account created using **Set Staff ID & PIN**, keep its generated account password private in case you promote the user to owner later. The shared Staff PIN applies only while the account has the Staff role.

@@ -406,7 +406,7 @@
         <input type="password" id="loginPassInput" placeholder="Enter password" autocomplete="current-password" />
       </div>
       <div id="pinEnrollment" class="field-group login-pin-enrollment" hidden>
-        <label><input type="checkbox" id="setupPinOnLogin" /> Set up a PIN on this device</label>
+        <label><input type="checkbox" id="setupPinOnLogin" /> Set up my Owner PIN on this device</label>
         <div id="newPinFields" hidden>
           <label for="newLoginPin">New 4-digit PIN</label>
           <input id="newLoginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
@@ -854,7 +854,11 @@
             <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
             <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
           </div>
-          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
+          <div id="staffPinSetup" class="cloud-settings-fields" hidden>
+            <label for="assignedStaffPin">Staff PIN (primary Owner only)</label>
+            <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
+            <button type="button" class="btn btn-outline" id="saveStaffPin">Set Staff ID &amp; PIN</button>
+          </div>          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
           <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
           <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
           <ul id="cloudStaffList"></ul>

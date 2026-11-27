@@ -19,7 +19,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true });
 }
 
 function raviEqual(left, right) {
@@ -112,28 +112,52 @@ function raviDeviceShape(req) {
     && /^[a-f0-9]{64}$/.test(req.deviceToken || "") && /^\d{4}$/.test(req.pin || "");
 }
 
+function raviDeviceKeys(props, id) {
+  return props.getKeys().filter(key => key.startsWith("device:" + id + ":"));
+}
+
+function raviResetDevices(props, id) {
+  for (const key of raviDeviceKeys(props, id)) props.deleteProperty(key);
+}
+
 function raviCheckPin(props, pepper, req) {
-  if (!raviDeviceShape(req)) return "pin-invalid";
+  if (!raviDeviceShape(req)) return { reason: "pin-invalid" };
   const key = raviPinDeviceKey(pepper, req.id, req.deviceToken);
+  const now = Date.now();
+  const account = props.getProperty("staff:" + req.id);
+  if (!account) return { reason: req.action === "staff.login" ? "pin-invalid" : "revoked" };
+  const managedKey = "staff-pin:" + req.id;
+  const managed = JSON.parse(props.getProperty(managedKey) || "null");
+  if (managed && raviRole(props, req.id) === "staff") {
+    if (!managed.approved) return { reason: "pending-approval" };
+    if (managed.retryAfter > now) return { reason: "pin-locked" };
+    if (raviEqual(managed.digest, raviStaffDigest(pepper, managedKey, req.pin))) return null;
+    const windowEnd = managed.windowEnd > now ? managed.windowEnd : now + 60 * 60 * 1000;
+    const failures = managed.windowEnd === windowEnd ? managed.failures + 1 : 1;
+    const retryAfter = failures >= 5 ? windowEnd : 0;
+    props.setProperty(managedKey, JSON.stringify({ ...managed, failures, retryAfter, windowEnd }));
+    return { reason: retryAfter ? "pin-locked" : "pin-invalid" };
+  }
   const record = JSON.parse(props.getProperty(key) || "null");
-  if (!record || record.expires <= Date.now() || !raviEqual(record.account, props.getProperty("staff:" + req.id))) {
-    if (record) props.deleteProperty(key);
-    return "pin-reset";
+  if (!record) return { reason: "pin-reset" };
+  if (record.expires <= now || !raviEqual(record.account, account)) {
+    props.deleteProperty(key);
+    return { reason: "pin-reset" };
   }
   if (raviEqual(record.pinHash, raviStaffDigest(pepper, key, req.pin))) {
     if (record.failures) {
       record.failures = 0;
       props.setProperty(key, JSON.stringify(record));
     }
-    return "";
+    return null;
   }
   record.failures++;
   if (record.failures >= 5) {
     props.deleteProperty(key);
-    return "pin-reset";
+    return { reason: "pin-reset" };
   }
   props.setProperty(key, JSON.stringify(record));
-  return "pin-invalid";
+  return { reason: "pin-invalid" };
 }
 
 function doPost(e) {
@@ -151,6 +175,7 @@ function doPost(e) {
     try {
       if (req.action === "device.enroll") {
         if (!raviDeviceShape(req) || !raviVerifyAccount(props, staffPepper, req)) return raviReply(bad);
+        if (raviRole(props, req.id) === "staff") return raviReply({ ok: false, reason: "owner-sets-pin" });
         const key = raviPinDeviceKey(staffPepper, req.id, req.deviceToken);
         props.setProperty(key, JSON.stringify({
           account: props.getProperty("staff:" + req.id),
@@ -163,7 +188,7 @@ function doPost(e) {
       const pinLogin = typeof req.deviceToken === "string";
       const accountLogin = typeof req.ownerKey !== "string" && (pinLogin || typeof req.password === "string");
       const pinError = pinLogin ? raviCheckPin(props, staffPepper, req) : "";
-      if (pinError) return raviReply({ ok: false, reason: pinError });
+      if (pinError) return raviReply({ ok: false, ...pinError });
       const verified = pinLogin || (accountLogin && raviVerifyAccount(props, staffPepper, req));
       if (req.action === "staff.login") return raviReply(verified
         ? { ok: true, staffId: req.id, role: raviRole(props, req.id) } : bad);
@@ -190,7 +215,11 @@ function doPost(e) {
       if (req.action === "staff.list") {
         const ids = props.getKeys().filter(key => key.startsWith("staff:")).map(key => key.slice(6)).sort();
         const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));
-        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary" });
+        const pendingPins = role === "primary" ? ids.filter(id => {
+          const pin = JSON.parse(props.getProperty("staff-pin:" + id) || "null");
+          return roles[id] === "staff" && pin && !pin.approved;
+        }) : [];
+        return raviReply({ ok: true, ids, roles, canManageOwners: role === "primary", pendingPins });
       }
       if (req.action === "backup.write" && req.data && typeof req.data === "object" && !Array.isArray(req.data)) {
         const data = req.data;
@@ -206,10 +235,34 @@ function doPost(e) {
       if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(target || "")) return raviReply(bad);
       const key = "staff:" + target;
       const targetRole = raviRole(props, target);
+      if (req.action === "staff.pin.set") {
+        if (role !== "primary" || targetRole !== "staff" || !/^\d{4}$/.test(req.assignedPin || "")) return raviReply(bad);
+        const created = !props.getProperty(key);
+        if (created) {
+          if (!/^[A-Za-z0-9_-]{24}$/.test(req.recoveryPassword || "")) return raviReply(bad);
+          props.setProperty(key, raviStaffDigest(staffPepper, target, req.recoveryPassword));
+        }
+        const pinKey = "staff-pin:" + target;
+        const digest = raviStaffDigest(staffPepper, pinKey, req.assignedPin);
+        const changed = !raviEqual(JSON.parse(props.getProperty(pinKey) || "null")?.digest, digest);
+        if (changed) {
+          raviResetDevices(props, target);
+          props.setProperty(pinKey, JSON.stringify({ digest, approved: false, failures: 0, retryAfter: 0 }));
+        }
+        return raviReply({ ok: true, installed: changed, created });
+      }
+      if (req.action === "staff.pin.approve") {
+        if (role !== "primary" || targetRole !== "staff" || !props.getProperty(key)) return raviReply(bad);
+        const pinKey = "staff-pin:" + target;
+        const pin = JSON.parse(props.getProperty(pinKey) || "null");
+        if (!pin) return raviReply(bad);
+        props.setProperty(pinKey, JSON.stringify({ ...pin, approved: true }));
+        return raviReply({ ok: true });
+      }
       if (req.action === "staff.revoke" && targetRole === "staff") {
         props.deleteProperty(key);
-        const prefix = "device:" + target + ":";
-        for (const name of props.getKeys()) if (name.startsWith(prefix)) props.deleteProperty(name);
+        props.deleteProperty("staff-pin:" + target);
+        raviResetDevices(props, target);
         return raviReply({ ok: true });
       }
       const password = accountLogin ? req.newPassword : req.password;
@@ -260,6 +313,9 @@ function doPost(e) {
     if (!probe.ok || info?.protocol !== protocol) {
       throw Error("The owner must deploy the updated RAVI Apps Script for this link.");
     }
+    if (action.startsWith("staff.pin.") && info.ownerStaffPin !== true) {
+      throw Error("Deploy the Owner-managed Staff PIN update first.");
+    }
     if ((action === "device.enroll" || fields.deviceToken) && info.devicePin !== true) {
       throw Error("The shop owner must deploy the PIN update before you can use a PIN.");
     }
@@ -276,9 +332,12 @@ function doPost(e) {
         error.revoked = true;
         throw error;
       }
+      if (result?.reason === "pending-approval") throw Error("Ask the Owner to approve your staff PIN, then tap Login again.");
+      if (result?.reason === "pin-locked") throw Error("Too many incorrect PINs. Try again later or ask the Owner to reset your PIN.");
+      if (result?.reason === "owner-sets-pin") throw Error("Ask the primary Owner to set your Staff PIN.");
       if (result?.reason === "pin-invalid") throw Error("Incorrect 4-digit PIN.");
       if (result?.reason === "pin-reset") {
-        const error = Error("PIN locked or expired. Sign in with your password to set it up again.");
+        const error = Error("PIN locked or expired. Check with the Owner or use your existing account password.");
         error.revoked = true;
         throw error;
       }
@@ -324,9 +383,8 @@ function doPost(e) {
     if (!staffId.test(id)) throw Error("Invalid online Login ID.");
     let credentials;
     if (method === "pin") {
-      const deviceToken = deviceTokenFor(endpoint, id);
-      if (!deviceToken) throw Error("Sign in with your password to set up a PIN on this device.");
       if (!/^\d{4}$/.test(secret)) throw Error("Enter your 4-digit PIN.");
+      const deviceToken = deviceTokenFor(endpoint, id) || newPinToken(endpoint, id);
       credentials = { deviceToken, pin: secret };
     } else {
       if (!/^[A-Za-z0-9_-]{24}$/.test(secret)) throw Error("Invalid online password.");
@@ -337,14 +395,18 @@ function doPost(e) {
     return { ...result, credentials };
   }
 
-  async function enrollPin(endpoint, id, password, pin) {
-    const existing = deviceTokenFor(endpoint, id);
-    const token = existing || Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, "0")).join("");
-    await request(endpoint, "device.enroll", { id, password, deviceToken: token, pin });
+  function newPinToken(endpoint, id) {
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, "0")).join("");
     const records = pinDevices().filter(record => record.endpoint !== endpoint || record.id !== id);
     if (!safeStorageSet("tc_pin_devices", [...records, { endpoint, id, token }])) {
       throw Error("Could not save this device's PIN registration.");
     }
+    return token;
+  }
+
+  async function enrollPin(endpoint, id, password, pin) {
+    const token = deviceTokenFor(endpoint, id) || newPinToken(endpoint, id);
+    await request(endpoint, "device.enroll", { id, password, deviceToken: token, pin });
   }
 
   function ownerConnected() {
@@ -379,6 +441,8 @@ function doPost(e) {
       byId("cloudStaffPassword").value = "";
       byId("cloudStaffPassword").hidden = true;
       byId("cloudStaffList").replaceChildren();
+      byId("staffPinSetup").hidden = true;
+      byId("assignedStaffPin").value = "";
       byId("cloudStaffResult").textContent = "";
     }
   }
@@ -568,10 +632,11 @@ function doPost(e) {
     }
 
     async function refreshList(endpoint) {
-      const { ids, roles, canManageOwners } = await owner(endpoint, "staff.list");
+      const { ids, roles, canManageOwners, pendingPins } = await owner(endpoint, "staff.list");
       if (!isOwner() || endpoint !== shopLink()) return;
       const list = byId("cloudStaffList");
       list.replaceChildren();
+      byId("staffPinSetup").hidden = !canManageOwners;
       byId("cloudOwnershipNote").hidden = !canManageOwners || !ids.length;
       for (const id of ids.filter(id => staffId.test(id))) {
         const role = roles?.[id] || "staff";
@@ -606,6 +671,18 @@ function doPost(e) {
           else addAction("Remove Co-owner access", "owner.demote", id + " is now Staff.");
           addAction("Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
         }
+        if (pendingPins?.includes(id)) {
+          const approve = document.createElement("button");
+          approve.type = "button";
+          approve.className = "mini-btn";
+          approve.textContent = "Approve staff PIN";
+          run(approve, async () => {
+            await owner(endpoint, "staff.pin.approve", { id });
+            await refreshList(endpoint);
+            result.textContent = "PIN approved. " + id + " can now sign in on any device.";
+          });
+          row.append(approve, " ");
+        }
         list.append(row);
       }
     }
@@ -631,6 +708,7 @@ function doPost(e) {
       safeStorageSet("tc_staff_shop", endpoint);
       safeStorageSet("tc_settings", settings);
       refreshOwnerPanel();
+      byId("staffPinSetup").hidden = ownerAccess.role !== "primary";
       setupResult.textContent = "Owner key saved for this session.";
       triggerBackgroundSync();
     }, setupResult);
@@ -680,6 +758,24 @@ function doPost(e) {
       result.textContent = "Created " + id + ". Share this password with that staff member.";
       pendingStaff = undefined;
       await refreshList(endpoint);
+    });
+
+    run(byId("saveStaffPin"), async () => {
+      const id = byId("cloudStaffId").value.trim().toLowerCase();
+      const pinField = byId("assignedStaffPin");
+      const assignedPin = pinField.value;
+      const endpoint = shopLink();
+      if (!staffId.test(id) || !/^\d{4}$/.test(assignedPin)) throw Error("Enter an Online Staff ID and a 4-digit PIN.");
+      const recoveryPassword = createPassword();
+      const { created, installed } = await owner(endpoint, "staff.pin.set", { id, assignedPin, recoveryPassword });
+      pinField.value = "";
+      if (!isOwner() || endpoint !== shopLink()) return;
+      passwordField.value = created ? recoveryPassword : "";
+      passwordField.hidden = !created;
+      await refreshList(endpoint);
+      result.textContent = installed
+        ? "PIN saved for " + id + ". Tap Approve staff PIN once." + (created ? " Keep the generated account password privately for future owner access." : "")
+        : "The PIN for " + id + " is already set.";
     });
 
     run(byId("listCloudStaff"), () => refreshList(shopLink()));
