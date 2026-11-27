@@ -144,7 +144,7 @@
         $r("setupPinOnLogin").checked = false;
         if (result.role === "primary" || result.role === "co-owner") {
           clearCart();
-          RaviCloud.startOnlineOwner(endpoint, id, result.credentials);
+          RaviCloud.startOnlineOwner(endpoint, id, result.credentials, result.role);
           openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
         } else {
           RaviCloud.startStaffSession(endpoint, id, result.credentials);

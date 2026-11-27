@@ -744,47 +744,47 @@
     </div>
 
     <div id="tab-settings" class="section">
-      <div class="card" style="border:2px solid var(--amber);">
-        <span class="card-title">🏪 Kadai / Shop Details Setup</span>
-        <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">
-          Unga <b>Kadai Name, Contact Number, Address & UPI ID</b> inga set pannunga — bill receipt, WhatsApp & UPI QR-la automatic-ah varum.
-        </p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="card cloud-settings-card shop-setup">
+        <h2>Shop Setup</h2>
+        <section class="shop-setup-section" aria-labelledby="shopNameHeading">
+          <h3 id="shopNameHeading">Shop name</h3>
           <div class="field-group">
-            <label>Kadai / Shop Name *</label>
-            <input type="text" id="setCafeName" placeholder="Enter your Kadai Name" oninput="updateLiveReceiptPreview()" />
+            <label for="setCafeName">Name on receipts</label>
+            <input type="text" id="setCafeName" placeholder="Enter your shop name" oninput="updateLiveReceiptPreview()" />
           </div>
-          <div class="field-group">
-            <label>Contact Number *</label>
-            <input type="tel" id="setPhone" placeholder="e.g. +91 98765 43210" oninput="updateLiveReceiptPreview()" />
+        </section>
+        <section class="shop-setup-section" aria-labelledby="billingDetailsHeading">
+          <h3 id="billingDetailsHeading">Billing details</h3>
+          <div class="shop-setup-grid">
+            <div class="field-group">
+              <label for="setPhone">Contact number</label>
+              <input type="tel" id="setPhone" placeholder="e.g. +91 98765 43210" oninput="updateLiveReceiptPreview()" />
+            </div>
+            <div class="field-group">
+              <label for="setGstin">GSTIN / FSSAI (optional)</label>
+              <input type="text" id="setGstin" oninput="updateLiveReceiptPreview()" />
+            </div>
+            <div class="field-group">
+              <label for="setUpi">UPI ID for receipt QR</label>
+              <input type="text" id="setUpi" placeholder="e.g. yourshop@okicici" oninput="updateLiveReceiptPreview()" />
+            </div>
+            <div class="field-group">
+              <label for="setAddress">Shop address</label>
+              <textarea id="setAddress" rows="2" oninput="updateLiveReceiptPreview()"></textarea>
+            </div>
           </div>
-        </div>
-
-        <div class="field-group">
-          <label>Shop Address *</label>
-          <textarea id="setAddress" rows="2" placeholder="Full shop address" oninput="updateLiveReceiptPreview()"></textarea>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="field-group">
-            <label>UPI ID (for Bill QR)</label>
-            <input type="text" id="setUpi" placeholder="e.g. yourshop@okicici" oninput="updateLiveReceiptPreview()" />
+        </section>
+        <section class="shop-setup-section" aria-labelledby="receiptPreviewHeading">
+          <h3 id="receiptPreviewHeading">Receipt preview</h3>
+          <div class="receipt-preview-box">
+            <strong style="font-size:15px;" id="prevCafeName">TAKEN CAFE</strong><br/>
+            <span id="prevAddress" style="font-size:11px;"></span><br/>
+            <span id="prevPhone" style="font-size:11px;font-weight:bold;"></span><br/>
+            <small id="prevGstin"></small>
+            <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;font-size:11px;" id="prevUpi"></div>
           </div>
-          <div class="field-group">
-            <label>GSTIN / FSSAI (Optional)</label>
-            <input type="text" id="setGstin" placeholder="GSTIN / FSSAI" oninput="updateLiveReceiptPreview()" />
-          </div>
-        </div>
-
-        <button class="btn btn-green" onclick="saveSettings()">💾 Save Kadai Details & Sync</button>
-
-        <div class="receipt-preview-box">
-          <strong style="font-size:15px;" id="prevCafeName">TAKEN CAFE</strong><br/>
-          <span id="prevAddress" style="font-size:11px;"></span><br/>
-          <span id="prevPhone" style="font-size:11px;font-weight:bold;"></span><br/>
-          <small id="prevGstin"></small>
-          <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;font-size:11px;" id="prevUpi"></div>
-        </div>
+        </section>
+        <button class="btn btn-green" onclick="saveSettings()">Save shop details</button>
       </div>
 
       <div class="card">
@@ -912,15 +912,17 @@
         <div class="cloud-settings-fields">
           <label for="cloudStaffId">Online Staff ID</label>
           <input type="text" id="cloudStaffId" placeholder="e.g. priya" autocomplete="off" />
-          <div class="cloud-settings-actions">
-            <button type="button" class="btn btn-primary" id="createCloudStaff">Create Staff ID and password</button>
-            <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
-          </div>
           <div id="staffPinSetup" class="cloud-settings-fields" hidden>
-            <label for="assignedStaffPin">Staff PIN (primary Owner only)</label>
+            <label for="assignedStaffPin">4-digit Staff PIN</label>
             <input id="assignedStaffPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
-            <button type="button" class="btn btn-outline" id="saveStaffPin">Set Staff ID &amp; PIN</button>
-          </div>          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
+            <button type="button" class="btn btn-primary" id="saveStaffPin">Set Staff ID &amp; PIN</button>
+          </div>
+          <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh staff list</button>
+          <details class="cloud-disclosure" id="staffPasswordSetup">
+            <summary>Staff login by password</summary>
+            <button type="button" class="btn btn-outline" id="createCloudStaff">Create Staff ID and password</button>
+          </details>
+          <p id="cloudStaffResult" class="cloud-feedback" role="status"></p>
           <input type="text" id="cloudStaffPassword" aria-label="Generated staff password" readonly hidden />
           <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
           <ul id="cloudStaffList"></ul>
@@ -943,11 +945,14 @@
       </div>
 
       <div class="card">
-        <span class="card-title">🛡️ Privacy Policy & About</span>
+        <span class="card-title">About</span>
         <div class="policy-box" style="margin-top:8px;">
+          <details>
+            <summary>Privacy policy</summary>
           <p style="margin:0 0 8px;"><b>1. Data Ownership & Local-First Privacy:</b> All billing records, menu items, expenses, and staff attendance logs are stored locally on your device and synced exclusively to your own connected Google Drive & Google Sheet. No third-party servers collect or view your business data.</p>
           <p style="margin:0 0 8px;"><b>2. Role-Based Access & Security:</b> Owner and Manager role controls restrict attendance logs and administrative settings from unauthorized staff access, backed by deletion PIN locks.</p>
           <p style="margin:0 0 8px;"><b>3. Live Sheet & Excel Reports:</b> Every sync updates your live Google Sheet and lets you export clean Excel (<code>.xlsx</code>) reports with totals anytime.</p>
+          </details>
           <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:11px;">
             <span>RAVI POS v2.6</span>
             <span>Developed by Ravi</span>
@@ -2551,15 +2556,19 @@
     }
 
     function saveSettings() {
-      settings.name = document.getElementById("setCafeName").value.trim() || "MY SHOP";
-      settings.phone = document.getElementById("setPhone").value.trim();
-      settings.address = document.getElementById("setAddress").value.trim();
-      settings.upi = document.getElementById("setUpi").value.trim();
-      settings.gstin = document.getElementById("setGstin").value.trim();
-      settings.updatedAt = Date.now();
-      safeStorageSet("tc_settings", settings);
+      const updated = {
+        ...settings,
+        name: document.getElementById("setCafeName").value.trim() || "MY SHOP",
+        phone: document.getElementById("setPhone").value.trim(),
+        address: document.getElementById("setAddress").value.trim(),
+        upi: document.getElementById("setUpi").value.trim(),
+        gstin: document.getElementById("setGstin").value.trim(),
+        updatedAt: Date.now()
+      };
+      if (!safeStorageSet("tc_settings", updated)) return;
+      settings = updated;
       applySettingsToInputs(); triggerBackgroundSync();
-      showToast("✅ Kadai details saved & synced!");
+      showToast(navigator.onLine ? "Shop details saved." : "Shop details saved offline.");
     }
 
     if ("serviceWorker" in navigator) {

@@ -416,6 +416,8 @@ function doPost(e) {
   function refreshOwnerPanel() {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !allowed;
+    byId("staffPinSetup").hidden = !allowed || ownerConnection?.role !== "primary";
+    byId("staffPasswordSetup").open = allowed && ownerConnection?.role !== "primary";
     const setup = byId("cloudOwnerSetup");
     setup.hidden = !allowed || isOnlineOwner();
     if (allowed && !ownerConnected()) {
@@ -451,8 +453,8 @@ function doPost(e) {
     return Boolean(ownerConnection?.id);
   }
 
-  function startOnlineOwner(endpoint, id, credentials) {
-    ownerConnection = { endpoint, id, credentials };
+  function startOnlineOwner(endpoint, id, credentials, role) {
+    ownerConnection = { endpoint, id, credentials, role };
     settings.gdriveUrl = endpoint;
     byId("gdriveUrlInput").value = endpoint;
     safeStorageSet("tc_staff_shop", endpoint);
@@ -700,7 +702,7 @@ function doPost(e) {
       if (!ownerKeyFormat.test(key)) throw Error("Enter the 64-character owner key from Script Properties.");
       const ownerAccess = await request(endpoint, "owner.check", { ownerKey: key });
       if (!isOwner() || endpoint !== shopLink() || keyField.value.trim() !== key) return;
-      ownerConnection = { endpoint, key, canBootstrap: ownerAccess.canBootstrap === true };
+      ownerConnection = { endpoint, key, role: ownerAccess.role, canBootstrap: ownerAccess.canBootstrap === true };
       byId("onlineOwnerId").value = getLoggedAccount().username.trim().toLowerCase();
       keyField.value = "";
       shopField.value = endpoint;
@@ -708,7 +710,6 @@ function doPost(e) {
       safeStorageSet("tc_staff_shop", endpoint);
       safeStorageSet("tc_settings", settings);
       refreshOwnerPanel();
-      byId("staffPinSetup").hidden = ownerAccess.role !== "primary";
       setupResult.textContent = "Owner key saved for this session.";
       triggerBackgroundSync();
     }, setupResult);
@@ -733,7 +734,7 @@ function doPost(e) {
       try {
         await request(connection.endpoint, "owner.bootstrap", { ownerKey: connection.key, id, password });
         if (!isOwner() || sessionStorage.getItem("tc_logged_uid") !== previousUid) return;
-        startOnlineOwner(connection.endpoint, id, { password });
+        startOnlineOwner(connection.endpoint, id, { password }, "primary");
         openSession({ uid: "cloud-owner:" + id, username: id, role: "Owner" });
         setupResult.textContent = "Online Owner activated. Sync starts automatically.";
       } finally {
