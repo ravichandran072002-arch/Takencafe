@@ -54,6 +54,57 @@
       --shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
     }
 
+    [data-palette="forest"] {
+      --espresso: #153b2a;
+      --roast: #24543e;
+      --accent-fill: #166447;
+    }
+    [data-theme="day"][data-palette="forest"] {
+      --bg: #f1f7f2;
+      --th-bg: #dcf3e5;
+      --card: #f8fcf9;
+      --amber: #166447;
+      --amber-soft: #dcf3e5;
+    }
+    [data-theme="dark"][data-palette="forest"] {
+      --amber: #85d9b2;
+      --amber-soft: #173b2c;
+    }
+
+    [data-palette="ocean"] {
+      --espresso: #132e4a;
+      --roast: #244966;
+      --accent-fill: #215d91;
+    }
+    [data-theme="day"][data-palette="ocean"] {
+      --bg: #edf6fb;
+      --th-bg: #deedfc;
+      --card: #f7fbfe;
+      --amber: #215d91;
+      --amber-soft: #deedfc;
+    }
+    [data-theme="dark"][data-palette="ocean"] {
+      --amber: #9bcfff;
+      --amber-soft: #1b3651;
+    }
+
+    [data-palette="plum"] {
+      --espresso: #3d224d;
+      --roast: #583469;
+      --accent-fill: #783e89;
+    }
+    [data-theme="day"][data-palette="plum"] {
+      --bg: #f8f1fa;
+      --th-bg: #f3e3f8;
+      --card: #fdf9fe;
+      --amber: #783e89;
+      --amber-soft: #f3e3f8;
+    }
+    [data-theme="dark"][data-palette="plum"] {
+      --amber: #e5a9f0;
+      --amber-soft: #43274c;
+    }
+
     * {
       box-sizing: border-box;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -73,7 +124,7 @@
 
     .login-screen {
       position: fixed; inset: 0; z-index: 300;
-      background: linear-gradient(145deg, #160c07, #331b10);
+      background: linear-gradient(145deg, var(--espresso), var(--roast));
       display: flex; align-items: center; justify-content: center;
       padding: 16px;
     }
@@ -129,7 +180,7 @@
     }
     .install-btn {
       display: none; font-size: 10px; padding: 5px 8px; border-radius: 20px;
-      background: var(--amber); color: #fff; font-weight: 700; cursor: pointer; border: none;
+      background: var(--accent-fill, var(--amber)); color: #fff; font-weight: 700; cursor: pointer; border: none;
     }
 
     .nav-tabs {
@@ -215,7 +266,7 @@
 
     .live-bill-bar {
       position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-width: 100%;
-      background: #1e110a; color: #fff; z-index: 60;
+      background: var(--espresso); color: #fff; z-index: 60;
       padding: 8px 10px 10px; box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
       border-top: 2px solid var(--amber); overflow: hidden;
     }
@@ -232,7 +283,7 @@
       white-space: nowrap; flex-shrink: 0;
     }
     .live-chip button {
-      background: var(--amber); color: #fff; border: none; border-radius: 50%;
+      background: var(--accent-fill, var(--amber)); color: #fff; border: none; border-radius: 50%;
       width: 18px; height: 18px; font-weight: 800; font-size: 12px; cursor: pointer; line-height: 1;
     }
     .live-bar-main { display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%; }
@@ -262,7 +313,7 @@
       font-size: 13px; cursor: pointer; width: 100%;
     }
     .btn:active { opacity: 0.85; }
-    .btn-primary { background: var(--amber); color: #fff; }
+    .btn-primary { background: var(--accent-fill, var(--amber)); color: #fff; }
     .btn-dark { background: #1e110a; color: #fde68a; border: 1px solid rgba(253,230,138,0.25); }
     .btn-green { background: #15803d; color: #fff; }
     .btn-blue { background: #1d4ed8; color: #fff; }
@@ -347,6 +398,8 @@
       padding: 11px; border-radius: 10px; border: 2px solid var(--border);
       background: var(--input-bg); color: var(--text); font-weight: 800; font-size: 13px; cursor: pointer;
     }
+    .appearance-style { display: grid; gap: 5px; margin-top: 12px; font-size: 13px; font-weight: 700; }
+    .appearance-style select { width: 100%; }
     .theme-btn.active { border-color: var(--amber); background: var(--amber-soft); }
     .policy-box {
       font-size: 12px; color: var(--muted); line-height: 1.55;
@@ -744,6 +797,15 @@
           <button class="theme-btn active" id="btnThemeDay" onclick="setAppTheme('day')">☀️ Day Mode</button>
           <button class="theme-btn" id="btnThemeDark" onclick="setAppTheme('dark')">🌙 Dark Mode</button>
         </div>
+        <label class="appearance-style" for="paletteSelect">
+          Colour theme
+          <select id="paletteSelect" onchange="setAppPalette(this.value)">
+            <option value="classic">Classic Amber</option>
+            <option value="forest">Forest Green</option>
+            <option value="ocean">Ocean Blue</option>
+            <option value="plum">Plum</option>
+          </select>
+        </label>
       </div>
 
       <div class="card" id="userAccessControlCard">
@@ -1164,6 +1226,13 @@
       });
     }
 
+    function restoreBillDateTime(bill) {
+      if ((bill.date && bill.time) || !Number.isFinite(bill.timestamp) || bill.timestamp <= 0) return bill;
+      const savedAt = new Date(bill.timestamp);
+      if (!Number.isFinite(savedAt.getTime())) return bill;
+      return { ...bill, date: bill.date || getTodayDDMMYYYY(savedAt), time: bill.time || getNowTimeIST(savedAt) };
+    }
+
     function parseAnyDateToISO(dateStr) {
       if (!dateStr) return "";
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
@@ -1253,7 +1322,7 @@
       '  const dayRows = [["Date", "Total Bills", "Cash Sales", "UPI/Card Sales", "Total Sales", "Expenses", "Cash in Drawer", "Net Profit"]];',
       '  Object.values(dayMap).forEach(d => dayRows.push([d.date, d.count, d.cash, d.digital, d.sales, d.exp, d.cash - d.exp, d.sales - d.exp]));',
       '  const billRows = [["Bill No", "Date", "Time", "Staff", "Type", "Customer", "Mode", "Items", "Subtotal", "Packing", "Discount", "GST", "Grand Total"]];',
-      '  bills.forEach(b => billRows.push([b.billNo, b.date, b.time, b.staff || "", b.type || "", b.customer || "", b.mode || "", (b.items || []).map(i => i.name + " x" + i.qty).join("; "), Number(b.sub || 0), Number(b.packing || 0), Number(b.discount || 0), Number(b.gst || 0), Number(b.total || 0)]));',
+      '  bills.forEach(b => billRows.push([b.billNo, b.date, b.time || (b.timestamp > 0 ? Utilities.formatDate(new Date(b.timestamp), "Asia/Kolkata", "hh:mm a") : ""), b.staff || "", b.type || "", b.customer || "", b.mode || "", (b.items || []).map(i => i.name + " x" + i.qty).join("; "), Number(b.sub || 0), Number(b.packing || 0), Number(b.discount || 0), Number(b.gst || 0), Number(b.total || 0)]));',
       '  const expRows = [["Date", "Category", "Note", "Amount"]];',
       '  expenses.forEach(e => expRows.push([e.date, e.cat, e.note, Number(e.amount || 0)]));',
       '  const attRows = [["Employee", "Date", "In Time", "Out Time", "Duration", "Device"]];',
@@ -1366,7 +1435,7 @@
     let deletedBillIds = safeStorageGet("tc_deleted_bill_ids", []);
     let deletedExpenseIds = safeStorageGet("tc_deleted_expense_ids", []);
     let deletedUserIds = safeStorageGet("tc_deleted_user_ids", []);
-    let bills = safeStorageGet("tc_bills", []);
+    let bills = safeStorageGet("tc_bills", []).map(restoreBillDateTime);
     let expenses = safeStorageGet("tc_expenses", []);
     let attendance = safeStorageGet("tc_attendance", []);
     let activeShiftUid = localStorage.getItem("tc_active_shift_uid") || "";
@@ -1493,6 +1562,7 @@
     const debouncedRenderMenuManager = debounce(() => renderMenuManager(), 130);
 
     function triggerBackgroundSync() {
+      if (!navigator.onLine) return;
       if (typeof RaviCloud !== "undefined" && RaviCloud.staffActive()) {
         setTimeout(RaviCloud.syncStaff, 180);
         return;
@@ -1522,11 +1592,24 @@
       showToast(mode === "dark" ? "🌙 Dark Mode Activated" : "☀️ Day Mode Activated");
     }
 
+    function setAppPalette(palette) {
+      settings.palette = palette;
+      safeStorageSet("tc_settings", settings);
+      applyThemeUI();
+    }
+
     function applyThemeUI() {
       const isDark = settings.theme === "dark";
-      document.documentElement.setAttribute("data-theme", isDark ? "dark" : "day");
-      document.getElementById("btnThemeDay").classList.toggle("active", !isDark);
-      document.getElementById("btnThemeDark").classList.toggle("active", isDark);
+      const choices = document.getElementById("paletteSelect");
+      const palette = [...choices.options].some(option => option.value === settings.palette) ? settings.palette : "classic";
+      document.documentElement.dataset.theme = isDark ? "dark" : "day";
+      document.documentElement.dataset.palette = palette;
+      choices.value = palette;
+      for (const [id, active] of [["btnThemeDay", !isDark], ["btnThemeDark", isDark]]) {
+        const button = document.getElementById(id);
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      }
     }
 
     function checkSessionLogin() {
@@ -2439,7 +2522,7 @@
       if (Array.isArray(remote.bills)) {
         const billMap = new Map();
         bills.forEach(b => { const key = b.uid || b.billNo; if (!deletedBillIds.includes(key)) billMap.set(key, b); });
-        remote.bills.forEach(rb => { const key = rb.uid || rb.billNo; if (deletedBillIds.includes(key)) return; if (!billMap.has(key)) billMap.set(key, rb); });
+        remote.bills.forEach(rb => { const key = rb.uid || rb.billNo; if (deletedBillIds.includes(key)) return; if (!billMap.has(key)) billMap.set(key, restoreBillDateTime(rb)); });
         bills = Array.from(billMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); safeStorageSet("tc_bills", bills);
       }
       if (Array.isArray(remote.expenses)) {

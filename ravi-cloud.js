@@ -77,7 +77,7 @@ function raviStaffRows(rows, id, kind) {
     };
     if (!Array.isArray(row.items) || !row.items.length || row.items.length > 200) throw Error("Invalid bill items");
     return {
-      ...base, timestamp: date(row.timestamp), billNo: text(row.billNo, 48), staff: id,
+      ...base, timestamp: date(row.timestamp), time: text(row.time, 24), billNo: text(row.billNo, 48), staff: id,
       type: text(row.type, 32), mode: text(row.mode, 32), customer: text(row.customer),
       items: row.items.map(item => ({ id: text(item.id, 48), name: text(item.name), cat: text(item.cat), price: number(item.price), qty: number(item.qty, 100000) })),
       sub: number(row.sub), packing: number(row.packing), discount: number(row.discount), gst: number(row.gst), total: number(row.total)
@@ -790,6 +790,10 @@ function doPost(e) {
       }
     };
     window.addEventListener("online", triggerBackgroundSync);
+    window.addEventListener("offline", () => {
+      if (!staffConnection && !ownerConnection) return;
+      byId("syncStatusBadge").textContent = "☁️ Offline";
+    });
     refreshOwnerPanel();
   }
 
