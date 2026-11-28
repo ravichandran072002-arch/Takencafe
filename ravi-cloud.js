@@ -576,6 +576,11 @@ const RaviCloud = (() => {
     await request(endpoint, "device.enroll", { id, password, deviceToken: token, pin });
   }
 
+  function ownerSyncSession() {
+    const connection = ownerConnection;
+    return () => ownerConnected() && ownerConnection === connection;
+  }
+
   function ownerConnected() {
     return isOwner() && ownerConnection?.endpoint === settings.gdriveUrl;
   }
@@ -631,6 +636,7 @@ const RaviCloud = (() => {
     settings.gdriveUrl = endpoint;
     byId("gdriveUrlInput").value = endpoint;
     safeStorageSet("tc_staff_shop", endpoint);
+    safeStorageSet("tc_recent_online_owner", { endpoint, id });
     safeStorageSet("tc_login_mode", "staff");
     byId("loginMode").value = "staff";
     safeStorageSet("tc_settings", settings);
@@ -776,9 +782,13 @@ const RaviCloud = (() => {
       secret.dispatchEvent(new Event("input"));
     }
 
+    const ownerLogin = byId("resumeOwnerLogin");
     function recallLoginId() {
       const remembered = safeStorageGet("tc_last_login_ids", {});
       loginId.value = remembered?.[mode.value] || "";
+      const saved = safeStorageGet("tc_recent_online_owner", null);
+      ownerLogin.hidden = saved?.endpoint !== staffShopLink() || !staffId.test(saved?.id || "");
+      ownerLogin.textContent = ownerLogin.hidden ? "" : "Sign in as Owner (" + saved.id + ")";
     }
 
     mode.addEventListener("change", () => {
@@ -787,6 +797,15 @@ const RaviCloud = (() => {
       clearLoginSecret();
       recallLoginId();
       updateLoginMode();
+    });
+    ownerLogin.addEventListener("click", () => {
+      const saved = safeStorageGet("tc_recent_online_owner", null);
+      if (saved?.endpoint !== staffShopLink() || !staffId.test(saved?.id || "")) return;
+      mode.value = "staff";
+      mode.dispatchEvent(new Event("change"));
+      loginId.value = saved.id;
+      loginId.dispatchEvent(new Event("input"));
+      secret.focus();
     });
     byId("loginModeSwitch").addEventListener("click", () => {
       mode.value = mode.value === "staff" ? "local" : "staff";
@@ -820,9 +839,14 @@ const RaviCloud = (() => {
       ownerConnection = undefined;
       setupPin.checked = false;
       clearLoginSecret();
+      logout();
+      lastBill = undefined;
+      closeModal();
+      closePinModal();
+      closeBillDrawer();
+      clearCart();
       recallLoginId();
       updateLoginMode();
-      logout();
       refreshOwnerPanel();
     };
 
@@ -1135,5 +1159,5 @@ const RaviCloud = (() => {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, canAssignStaffPin: () => ownerConnection?.role === "primary", staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected };
+  return { init, owner, staff, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, canAssignStaffPin: () => ownerConnection?.role === "primary", staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected, ownerSyncSession };
 })();

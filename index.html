@@ -703,6 +703,7 @@
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
         Use the password or PIN assigned to your account.
       </div>
+      <button type="button" class="mini-btn" id="resumeOwnerLogin" hidden></button>
       <button type="button" id="loginModeSwitch" class="mini-btn">Use an account saved on this device</button>
     </form>
   </div>
@@ -718,6 +719,7 @@
     <div class="header-actions">
       <button class="sync-badge" id="mainNavToggle" type="button" aria-controls="mainNav" aria-expanded="true" onclick="toggleMainNavigation(this)">Navigation</button>
       <button class="staff-badge logged-out" id="headerStaffBtn" onclick="openStaffLoginModal()">👤 Shift</button>
+      <button class="sync-badge" id="punchAlert" type="button" hidden onclick="viewPunchAlerts()"></button>
       <button class="sync-badge" id="stockAlert" type="button" hidden onclick="switchTab('stock', document.getElementById('nav-stock'))"></button>
       <button class="install-btn" id="installAppBtn" onclick="triggerInstallApp()">⬇ App</button>
       <button class="sync-badge" id="syncStatusBadge" onclick="syncNowBothWays(true)">☁️ Sync</button>
@@ -727,6 +729,7 @@
   <nav class="nav-tabs" id="mainNav" aria-label="Main navigation">
     <button class="active" id="nav-pos" onclick="switchTab('pos', this)">Billing</button>
     <button id="nav-staff" onclick="switchTab('staff', this)">Shift &amp; Inbox</button>
+    <button id="nav-my-bills" hidden onclick="switchTab('my-bills', this)">My Bills</button>
     <button id="nav-summary" onclick="switchTab('summary', this)">Bills & Excel</button>
     <button id="nav-expenses" onclick="switchTab('expenses', this)">Expenses</button>
     <button id="nav-menu" onclick="switchTab('menu', this)">Menu Edit</button>
@@ -882,6 +885,14 @@
         </div>
       </div>
     </div>
+
+    <section id="tab-my-bills" class="section">
+      <div class="card">
+        <h2 class="card-title">My saved bills</h2>
+        <div class="shop-entry-list" id="myBillList"></div>
+        <button type="button" class="mini-btn" id="moreMyBills" onclick="myBillLimit += 50; renderMyBills()" hidden>Show more</button>
+      </div>
+    </section>
 
     <div id="tab-summary" class="section">
       <section class="card" id="cashEntryCard" hidden>
@@ -1964,8 +1975,12 @@
       updateWhatsAppBillingUI();
       for (const tab of ["summary", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
       document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
+      document.getElementById("nav-my-bills").hidden = !cloudStaff;
+      document.getElementById("myBillList").replaceChildren();
+      if (!cloudStaff && activeTabName === "my-bills") switchTab("pos", document.getElementById("nav-pos"));
+      if (cloudStaff && activeTabName === "my-bills") renderMyBills();
       document.querySelector('[data-settings-button="appearance"]').hidden = getLoggedAccount().role !== "Owner";
-      if (cloudStaff && !["pos", "staff", "expenses", "stock"].includes(activeTabName)) switchTab("pos", document.getElementById("nav-pos"));
+      if (cloudStaff && !["pos", "staff", "expenses", "stock", "my-bills"].includes(activeTabName)) switchTab("pos", document.getElementById("nav-pos"));
       const acc = getLoggedAccount();
       const badgeText = document.getElementById("currentUserBadgeText");
       if (badgeText) {
@@ -2428,13 +2443,15 @@
     }
 
     function switchTab(tab, btn) {
-      if (isCloudStaff() && !["pos", "staff", "expenses", "stock"].includes(tab)) return;
+      if (tab === "my-bills" && !isCloudStaff()) return;
+      if (isCloudStaff() && !["pos", "staff", "expenses", "stock", "my-bills"].includes(tab)) return;
       activeTabName = tab;
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       document.querySelectorAll(".nav-tabs button").forEach(b => b.classList.remove("active"));
       document.getElementById("tab-" + tab).classList.add("active");
       if (btn) btn.classList.add("active");
       if (tab === "staff") { renderAttendance(); renderShopEntries(); }
+      if (tab === "my-bills") { myBillLimit = 50; renderMyBills(); }
       if (tab === "stock") renderShopEntries();
       if (tab === "summary") { renderSummary(); renderShopEntries(); }
       if (tab === "expenses") renderExpenses();
@@ -2639,9 +2656,38 @@
       if (openPrintAfter) openReceipt(bill); else showToast(`✅ Bill ${bill.billNo} (₹${bill.total}) Saved!`);
     }
 
-    function openReceiptByUid(uid) { const b = bills.find(item => (item.uid || item.billNo) === uid); if (b) openReceipt(b); }
+    let myBillLimit = 50;
+    function renderMyBills() {
+      const list = document.getElementById("myBillList");
+      const more = document.getElementById("moreMyBills");
+      list.replaceChildren();
+      more.hidden = true;
+      if (!isCloudStaff()) return;
+      const ownBills = bills.filter(RaviCloud.ownsRecord);
+      if (!ownBills.length) list.textContent = "No saved bills on this device.";
+      for (const bill of ownBills.slice(0, myBillLimit)) {
+        const row = document.createElement("div");
+        row.className = "staff-bill-row";
+        const detail = document.createElement("span");
+        detail.textContent = `${bill.billNo} · ${bill.date} ${bill.time} · ₹${bill.total}`;
+        const view = document.createElement("button");
+        view.type = "button";
+        view.className = "mini-btn view";
+        view.textContent = "View";
+        view.addEventListener("click", () => openReceiptByUid(bill.uid || bill.billNo));
+        row.append(detail, view);
+        list.append(row);
+      }
+      more.hidden = ownBills.length <= myBillLimit;
+    }
+
+    function openReceiptByUid(uid) {
+      const bill = bills.find(item => (item.uid || item.billNo) === uid);
+      if (bill) openReceipt(bill);
+    }
 
     function openReceipt(b) {
+      if (sessionStorage.getItem("tc_session_logged") !== "1" || !RaviCloud.ownsRecord(b)) return;
       lastBill = b;
       const area = document.getElementById("receiptPrintArea");
       area.classList.toggle("paper-58", settings.paperSize === "58mm");
@@ -2666,6 +2712,7 @@
     function closeModal() { document.getElementById("receiptModal").classList.remove("open"); }
 
     function promptDeleteBill(uid) {
+      if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return;
       const b = bills.find(item => (item.uid || item.billNo) === uid);
       if (!b) return;
       pendingDeleteTarget = { type: "bill", uid };
@@ -3023,7 +3070,37 @@
       showToast("Saved on this device.");
     }
 
+    function unreadPunchIns() {
+      if (!canConfigureBilling()) return [];
+      const day = getTodayDDMMYYYY();
+      const seen = safeStorageGet("tc_seen_punch_ins", {});
+      const ids = new Set(seen.day === day && Array.isArray(seen.ids) ? seen.ids : []);
+      return attendance.filter(shift => shift.date === day && shift.inTimestamp
+        && /^s:[a-z0-9._-]+:/.test(shift.uid) && !ids.has(shift.uid)
+        && (!shift.cloud || shift.cloud.endpoint === settings.gdriveUrl));
+    }
+
+    function renderPunchAlert() {
+      const alert = document.getElementById("punchAlert");
+      const shifts = unreadPunchIns();
+      alert.hidden = shifts.length === 0;
+      alert.textContent = shifts.length === 1
+        ? shifts[0].name + " punched in"
+        : shifts.length + " staff punch-ins";
+    }
+
+    function viewPunchAlerts() {
+      const shifts = unreadPunchIns();
+      if (!shifts.length) return;
+      const day = getTodayDDMMYYYY();
+      const seen = safeStorageGet("tc_seen_punch_ins", {});
+      const ids = seen.day === day && Array.isArray(seen.ids) ? seen.ids : [];
+      safeStorageSet("tc_seen_punch_ins", { day, ids: [...ids, ...shifts.map(shift => shift.uid)] });
+      switchTab("staff", document.getElementById("nav-staff"));
+    }
+
     function renderShopEntries() {
+      renderPunchAlert();
       const staff = isCloudStaff();
       const owner = getLoggedAccount().role === "Owner" && sessionStorage.getItem("tc_session_logged") === "1";
       const id = getLoggedAccount().username;
@@ -3338,11 +3415,13 @@
         return;
       }
       if (isSyncing) { syncQueued = true; return; }
+      const stillConnected = RaviCloud.ownerSyncSession();
       isSyncing = true;
       showOwnerSyncStatus("syncing", "Syncing with Google Drive and Sheets…");
       document.getElementById("syncStatusBadge").textContent = "☁️ Syncing";
       try {
         if (RaviCloud.isOnlineOwner()) await RaviCloud.syncStaff();
+        if (!stillConnected()) return;
         const todayTag = parseAnyDateToISO(getTodayDDMMYYYY());
         const payload = {
           version: 19, syncedAt: new Date().toISOString(), backupFileName: `TakenCafe_AutoBackup_${todayTag}.json`,
@@ -3356,13 +3435,16 @@
           settings: { name: settings.name, shopNameConfigured: Boolean(configuredShopName(settings)), phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
+        if (!stillConnected()) return;
         if (saved.data) await mergeTwoWayData(saved.data);
+        if (!stillConnected()) return;
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
         showOwnerSyncStatus("synced", saved.data?.exportSettings?.backgroundReports
           ? `Data synced at ${getNowTimeIST()}. Reports refresh in the background.`
           : `Synced at ${getNowTimeIST()}. Google Sheet updated.`);
         if (notify) showToast("Cloud backup synced ✓");
       } catch (err) {
+        if (!stillConnected()) return;
         document.getElementById("syncStatusBadge").textContent = "☁️ Pending";
         const message = err.revoked ? err.message : "Sync pending. Your changes are saved on this device.";
         showOwnerSyncStatus("pending", message);
