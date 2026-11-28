@@ -822,20 +822,21 @@
     <div id="tab-staff" class="section">
       <section class="card" id="ownerStaffEntries" hidden>
         <h2 class="card-title">Staff advances and messages</h2>
-        <button class="mini-btn" type="button" onclick="loadEntryStaff()">Load staff accounts</button>
+        <button class="mini-btn" id="refreshEntryStaff" type="button" onclick="loadEntryStaff()">Refresh staff list</button>
         <form class="shop-entry-form" onsubmit="saveShopEntry(event, 'advance')">
-          <label>Staff account<select name="recipient" data-staff-recipient required><option value="">Load staff accounts</option></select></label>
+          <label>Staff account<select name="recipient" data-staff-recipient required><option value="">Select staff</option></select></label>
           <label>Advance amount (₹)<input name="amount" type="number" min="0.01" max="100000000" step="0.01" required></label>
           <button class="btn btn-primary" type="submit">Record advance</button>
         </form>
         <form class="shop-entry-form" onsubmit="saveShopEntry(event, 'message')">
-          <label>Send to<select name="recipient" data-staff-recipient required><option value="">Load staff accounts</option></select></label>
+          <label>Send to<select name="recipient" data-staff-recipient data-broadcast required><option value="">Select staff</option></select></label>
           <label>Message<textarea name="note" maxlength="300" required></textarea></label>
           <button class="btn btn-primary" type="submit">Send message</button>
         </form>
       </section>
       <section class="card">
         <h2 class="card-title" id="staffEntryTitle">Staff activity</h2>
+        <button class="mini-btn" id="enableMessageAlerts" type="button" hidden>Enable phone notifications</button>
         <div class="shop-entry-list" id="staffEntryList"></div>
       </section>
       <div class="card" style="border:2px solid var(--amber);">
@@ -1990,6 +1991,11 @@
       document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
       document.getElementById("nav-my-bills").hidden = !cloudStaff;
       document.getElementById("myBillList").replaceChildren();
+      if (typeof RaviCloud !== "undefined" && !RaviCloud.ownerConnected()) {
+        for (const select of document.querySelectorAll("[data-staff-recipient]")) {
+          select.replaceChildren(new Option("Select staff", ""));
+        }
+      }
       if (!cloudStaff && activeTabName === "my-bills") switchTab("pos", document.getElementById("nav-pos"));
       if (cloudStaff && activeTabName === "my-bills") renderMyBills();
       document.querySelector('[data-settings-button="appearance"]').hidden = getLoggedAccount().role !== "Owner";
@@ -2470,7 +2476,7 @@
       document.querySelectorAll(".nav-tabs button").forEach(b => b.classList.remove("active"));
       document.getElementById("tab-" + tab).classList.add("active");
       if (btn) btn.classList.add("active");
-      if (tab === "staff") { renderAttendance(); renderShopEntries(); }
+      if (tab === "staff") { renderAttendance(); renderShopEntries(); if (RaviCloud.ownerConnected()) loadEntryStaff(); }
       if (tab === "my-bills") { myBillLimit = 50; renderMyBills(); }
       if (tab === "stock") renderShopEntries();
       if (tab === "summary") { renderSummary(); renderShopEntries(); }
@@ -3047,18 +3053,33 @@
       if (safeStorageSet("tc_shop_entries", next)) shopEntries = next;
     }
 
+    let staffRecipients = { current: null, ids: [] };
+
     async function loadEntryStaff() {
       const endpoint = settings.gdriveUrl;
-      const uid = sessionStorage.getItem("tc_logged_uid");
+      const current = RaviCloud.ownerSyncSession();
+      if (!current()) return;
+      const button = document.getElementById("refreshEntryStaff");
+      const pending = { current, ids: staffRecipients.current?.() ? staffRecipients.ids : [] };
+      staffRecipients = pending;
+      button.disabled = true;
       try {
         const result = await RaviCloud.owner(endpoint, "staff.list");
-        if (uid !== sessionStorage.getItem("tc_logged_uid") || endpoint !== settings.gdriveUrl) return;
-        const ids = (result.ids || []).filter(id => result.roles?.[id] === "staff" && !result.revokedIds?.includes(id));
+        if (!current() || staffRecipients !== pending) return;
+        pending.ids = (result.ids || []).filter(id => result.roles?.[id] === "staff" && !result.revokedIds?.includes(id));
         for (const select of document.querySelectorAll("[data-staff-recipient]")) {
-          select.replaceChildren(new Option(ids.length ? "Select staff" : "No active staff accounts", ""));
-          for (const id of ids) select.add(new Option(id, id));
+          const value = select.value;
+          const options = [new Option(pending.ids.length ? "Select staff" : "No active staff accounts", "")];
+          if (pending.ids.length && select.hasAttribute("data-broadcast")) options.push(new Option("All staff", "*"));
+          options.push(...pending.ids.map(id => new Option(id, id)));
+          select.replaceChildren(...options);
+          if (options.some(option => option.value === value)) select.value = value;
         }
-      } catch (error) { showToast(error.message); }
+      } catch (error) {
+        if (current()) showToast(error.message);
+      } finally {
+        if (staffRecipients === pending) button.disabled = false;
+      }
     }
 
     function saveShopEntry(event, kind) {
@@ -3077,17 +3098,25 @@
       if (["cash", "message", "stock"].includes(kind) && !note) return showToast("Fill in the required text.");
       if (["advance", "message"].includes(kind) && !recipient) return showToast("Select a staff account.");
       if (kind === "stock" && (!manufactured || !expiry || expiry < manufactured)) return showToast("Expiry must be on or after manufacture.");
+      const toStaff = kind === "message" || kind === "advance";
+      const recipients = kind === "message" && recipient === "*" ? staffRecipients.ids : [recipient];
+      if (toStaff && (!staffRecipients.current?.() || !recipients.length
+        || !recipients.every(id => staffRecipients.ids.includes(id)))) {
+        return showToast("Refresh the staff list and select a recipient.");
+      }
       const now = Date.now();
-      const entry = { uid: crypto.randomUUID(), kind, updatedAt: now, date: getTodayDDMMYYYY(new Date(now)), by: account.username,
-        note, recipient, amount, ...(kind === "stock" ? { manufactured, expiry } : {}) };
-      RaviCloud.tagRecord(entry);
-      if (!safeStorageSet("tc_shop_entries", [entry, ...shopEntries])) return;
-      shopEntries.unshift(entry);
+      const entries = recipients.map(id => ({
+        uid: crypto.randomUUID(), kind, updatedAt: now, date: getTodayDDMMYYYY(new Date(now)),
+        by: account.username, note, recipient: id, amount, ...(kind === "stock" ? { manufactured, expiry } : {})
+      }));
+      entries.forEach(RaviCloud.tagRecord);
+      if (!safeStorageSet("tc_shop_entries", [...entries, ...shopEntries])) return;
+      shopEntries.unshift(...entries);
       form.reset();
       renderShopEntries();
       if (kind === "cash") renderSummary();
       triggerBackgroundSync();
-      showToast("Saved on this device.");
+      showToast(kind === "message" ? "Message saved for sync to " + (recipient === "*" ? "all staff." : recipient + ".") : "Saved on this device.");
     }
 
     const activityLabels = {
@@ -3131,8 +3160,14 @@
       for (const row of rows) {
         const item = document.createElement("p");
         const time = new Date(row.at);
-        item.textContent = row.id + " " + activityLabels[row.kind] + " · "
-          + getTodayDDMMYYYY(time) + " " + getNowTimeIST(time);
+        item.className = "staff-activity-row";
+        if (!seen.has(row.uid)) item.classList.add("staff-activity-unread");
+        const label = document.createElement("strong");
+        label.textContent = row.id + " " + activityLabels[row.kind];
+        const stamp = document.createElement("time");
+        stamp.dateTime = time.toISOString();
+        stamp.textContent = getTodayDDMMYYYY(time) + " · " + getNowTimeIST(time);
+        item.append(label, stamp);
         list.append(item);
       }
     }

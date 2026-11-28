@@ -375,3 +375,12 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 #staffActivityDialog::backdrop { background: rgb(0 0 0 / 55%); }
 .staff-activity-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .staff-activity-heading h2 { font-size: 17px; }
+
+.staff-activity-row {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border-inline-start: 3px solid transparent;
+}
+.staff-activity-unread { border-inline-start-color: var(--amber); }
+.staff-activity-row time { color: var(--muted); font-size: 12px; }

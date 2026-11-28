@@ -609,6 +609,8 @@ const RaviCloud = (() => {
   function refreshOwnerPanel() {
     const allowed = isOwner();
     byId("cloudStaffPanel").hidden = !ownerConnected();
+    updateMessageAlertButton();
+    if (ownerConnected() && activeTabName === "staff") loadEntryStaff();
     const setup = byId("cloudOwnerSetup");
     setup.hidden = !allowed || isOnlineOwner();
     const connect = byId("connectOnlineOwner");
@@ -719,6 +721,34 @@ const RaviCloud = (() => {
     }
   }
 
+  function phoneNotifications() {
+    const bridge = window.Capacitor;
+    return bridge?.getPlatform?.() === "android" ? bridge.Plugins.LocalNotifications : null;
+  }
+
+  function updateMessageAlertButton() {
+    byId("enableMessageAlerts").hidden = !staffActive() || !phoneNotifications();
+  }
+
+  async function notifyStaffMessages(connection, entries) {
+    const plugin = phoneNotifications();
+    if (!plugin || !Array.isArray(entries)) return;
+    if ((await plugin.checkPermissions()).display !== "granted" || staffConnection !== connection) return;
+    const storageKey = "tc_message_alerts:" + connection.endpoint + ":" + connection.id;
+    const seen = new Set(safeStorageGet(storageKey, []));
+    const messages = entries.filter(row => row.kind === "message" && row.recipient === connection.id)
+      .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
+    const fresh = messages.filter(row => !seen.has(row.uid));
+    if (!fresh.length) return;
+    const notifications = fresh.slice(0, 5).map(row => ({
+      id: Array.from(row.uid).reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) | 0, 0) & 0x7fffffff,
+      title: "RAVI POS · New staff message",
+      body: "Open Shift & Inbox to read your message."
+    }));
+    await plugin.schedule({ notifications });
+    safeStorageSet(storageKey, messages.map(row => row.uid));
+  }
+
   async function syncStaff() {
     const connection = staffConnection;
     if (!connection || syncingStaff || !navigator.onLine) return;
@@ -744,6 +774,8 @@ const RaviCloud = (() => {
         connection.receiptShop = remote.receiptShop;
         receiveShopAppearance(remote.shopAppearance, connection.endpoint);
         mergeShopEntries(remote.shopEntries);
+        await notifyStaffMessages(connection, remote.shopEntries).catch(() => {});
+        if (staffConnection !== connection) return;
         renderShopEntries();
         if (remote.receiptShop?.name) byId("headerSubInfo").textContent = remote.receiptShop.name;
         updateWhatsAppBillingUI();
@@ -1184,6 +1216,14 @@ const RaviCloud = (() => {
         showToast("Select the script in the panel and copy it.");
       }
     };
+    byId("enableMessageAlerts").addEventListener("click", async () => {
+      if (!staffActive()) return;
+      try {
+        const result = await phoneNotifications().requestPermissions();
+        showToast(result.display === "granted" ? "Phone notifications enabled." : "Allow RAVI POS notifications in Android Settings.");
+        triggerBackgroundSync();
+      } catch { showToast("Phone notifications are unavailable."); }
+    });
     window.addEventListener("online", triggerBackgroundSync);
     window.addEventListener("offline", () => {
       if (!staffConnection && !ownerConnection) return;
