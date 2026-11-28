@@ -377,7 +377,7 @@
   <div class="login-screen" id="appLoginScreen">
     <div class="login-box">
       <div style="text-align:center;margin-bottom:14px;">
-        <div class="r-monogram-lg">R</div>
+        <div class="r-monogram-lg">R</div><div class="station-spinner" aria-hidden="true"></div>
         <strong style="font-size:19px;display:block;letter-spacing:0.6px;" id="loginAppTitle">RAVI</strong>
         <small style="color:var(--muted);" id="loginShopSub">Sign in to manage your shop</small>
       </div>
@@ -399,6 +399,7 @@
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint">
         Works Offline & Syncs with Google Drive / Sheet
       </div>
+      <div class="station-credit">Created by Ravi</div>
     </div>
   </div>
 
@@ -794,6 +795,7 @@
   </div>
 
   <div class="live-bill-bar" id="liveBillBar">
+    <div id="stationBillPreview" hidden></div>
     <div class="live-chips" id="liveChipsRow">
       <span style="font-size:11px;color:#e7d8ce;">Tap items above — live bill updates right here</span>
     </div>
