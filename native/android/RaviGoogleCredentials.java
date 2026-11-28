@@ -1,6 +1,7 @@
 package com.takencafe.ravi.fresh;
 
 import android.os.CancellationSignal;
+import androidx.core.content.ContextCompat;
 import androidx.credentials.Credential;
 import androidx.credentials.CredentialManager;
 import androidx.credentials.CredentialManagerCallback;
@@ -38,7 +39,7 @@ public class RaviGoogleCredentials extends Plugin {
             .build();
         getActivity().runOnUiThread(() ->
             CredentialManager.create(getActivity()).getCredentialAsync(
-                getActivity(), request, new CancellationSignal(), getActivity().getMainExecutor(),
+                getActivity(), request, new CancellationSignal(), ContextCompat.getMainExecutor(getActivity()),
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override
                     public void onResult(GetCredentialResponse response) {
