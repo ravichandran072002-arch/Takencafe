@@ -53,7 +53,10 @@ function updateLiveSheetFromBody(folder, body, changes, targetSheet) {
   });
   const entries = Array.isArray(body.shopEntries) ? body.shopEntries : [];
   for (const entry of entries.filter(row => row.kind === "cash")) {
-    const day = dayMap[entry.date] ||= { date: entry.date, count: 0, cash: 0, digital: 0, sales: 0, exp: 0 };
+    if (!dayMap[entry.date]) {
+      dayMap[entry.date] = { date: entry.date, count: 0, cash: 0, digital: 0, sales: 0, exp: 0 };
+    }
+    const day = dayMap[entry.date];
     day.drawerAdded = (day.drawerAdded || 0) + entry.amount;
   }
   const dayRows = [["Date", "Total Bills", "Cash Sales", "UPI/Card Sales", "Total Sales", "Expenses", "Cash in Drawer", "Net Profit"]];
