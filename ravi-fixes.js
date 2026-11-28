@@ -198,6 +198,7 @@
     }
     if (nextHash) {
       const updated = { ...u, passHash: nextHash, mustChange: false };
+      delete updated.firstOwnerSetup;
       if (mustChange) updated.updatedAt = Math.max(Date.now(), (u.updatedAt || 0) + 1);
       const accounts = authUsers.map(account => account === u ? updated : account);
       if (!safeStorageSet("tc_auth_users", accounts)) {

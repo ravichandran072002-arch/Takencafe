@@ -755,8 +755,11 @@ const RaviCloud = (() => {
       byId("newPinFields").hidden = !password || !setupPin.checked;
       byId("loginPassLabel").textContent = online ? "Password or 4-digit PIN" : "Password";
       secret.placeholder = online ? "Enter password or PIN" : "Enter password";
-      byId("loginModeSwitch").textContent = online ? "Use an account saved on this device" : "Use online sign-in";
-      byId("loginSyncHint").textContent = online ? "Use the password or PIN assigned to your account." : "Sign in to an account saved on this device.";
+      const firstOwner = authUsers.some(account => account.firstOwnerSetup && account.mustChange);
+      byId("loginModeSwitch").textContent = online
+        ? (firstOwner ? "First-time owner setup" : "Use an account saved on this device")
+        : "Use online sign-in";
+      byId("loginSyncHint").textContent = online ? "Use the password or PIN assigned to your account." : (firstOwner ? "First-time owner: use ravi for the Login ID and password." : "Sign in to an account saved on this device.");
     }
 
     function clearLoginSecret() {

@@ -1884,8 +1884,9 @@
       const legacy = safeStorageGet("tc_auth_creds", null);
       const initial = [{
         uid: "default-owner",
-        username: legacy?.username || "takencafe",
-        password: legacy?.password || "2002",
+        username: legacy?.username || "ravi",
+        password: legacy?.password || "ravi",
+        ...(!legacy?.username && !legacy?.password ? { mustChange: true, firstOwnerSetup: true } : {}),
         role: "Owner",
         canViewAttendance: true,
         updatedAt: legacy?.updatedAt || 1
