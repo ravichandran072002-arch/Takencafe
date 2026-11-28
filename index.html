@@ -657,12 +657,14 @@
         <p id="loginShopSub">Sign in</p>
       </div>
 
-      <h2 id="shopAccountLoginTitle" class="shop-account-login-title">Shop account</h2>
-      <p id="shopAccountLoginHelp" class="shop-account-login-help">Staff and co-owners sign in here with their own Login ID and PIN.</p>
-      <select id="loginMode" aria-label="Sign-in mode" hidden>
-        <option value="staff">Online account</option>
-        <option value="local">This device’s account</option>
-      </select>
+      <div class="field-group">
+        <label for="loginMode">Account type</label>
+        <select id="loginMode">
+          <option value="owner">Owner Login</option>
+          <option value="staff">Staff Login</option>
+        </select>
+      </div>
+      <p id="shopAccountLoginHelp" class="shop-account-login-help"></p>
       <div class="field-group">
         <label for="loginUserIdInput">Login ID</label>
         <input type="text" id="loginUserIdInput" placeholder="Enter Login ID" autocomplete="username" />
@@ -675,7 +677,7 @@
         </div>
       </div>
       <div id="pinEnrollment" class="field-group login-pin-enrollment" hidden>
-        <label><input type="checkbox" id="setupPinOnLogin" /> Set up my Owner or Co-owner PIN on this device</label>
+        <label><input type="checkbox" id="setupPinOnLogin" /> Set up my PIN on this device</label>
         <div id="newPinFields" hidden>
           <label for="newLoginPin">New 4-digit PIN</label>
           <input id="newLoginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" />
@@ -689,7 +691,11 @@
       </div>
 
       <section id="ownerPasswordChange" hidden>
-        <p>Choose a new owner password with at least 8 characters.</p>
+        <div class="field-group" id="firstOwnerIdField" hidden>
+          <label for="ownerNewLoginId">Choose your Owner Login ID</label>
+          <input id="ownerNewLoginId" type="text" autocomplete="off" maxlength="32" />
+        </div>
+        <p>Choose a password with at least 8 characters.</p>
         <div class="field-group">
           <label for="ownerNewPassword">New password</label>
           <input id="ownerNewPassword" type="password" autocomplete="new-password" />
@@ -703,8 +709,6 @@
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
         Use the password or PIN assigned to your account.
       </div>
-      <button type="button" class="mini-btn" id="resumeOwnerLogin" hidden></button>
-      <button type="button" id="loginModeSwitch" class="mini-btn">Use an account saved on this device</button>
     </form>
   </div>
 

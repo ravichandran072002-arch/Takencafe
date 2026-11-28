@@ -637,8 +637,8 @@ const RaviCloud = (() => {
     byId("gdriveUrlInput").value = endpoint;
     safeStorageSet("tc_staff_shop", endpoint);
     safeStorageSet("tc_recent_online_owner", { endpoint, id });
-    safeStorageSet("tc_login_mode", "staff");
-    byId("loginMode").value = "staff";
+    safeStorageSet("tc_login_role", "owner");
+    byId("loginMode").value = "owner";
     safeStorageSet("tc_settings", settings);
     staffConnection = { endpoint, id, credentials };
     clearTimeout(staffExpiry);
@@ -647,7 +647,7 @@ const RaviCloud = (() => {
 
   function startStaffSession(endpoint, id, credentials) {
     staffConnection = { endpoint, id, credentials };
-    safeStorageSet("tc_login_mode", "staff");
+    safeStorageSet("tc_login_role", "staff");
     localMenu = menu;
     clearCart();
     clearTimeout(staffExpiry);
@@ -749,29 +749,24 @@ const RaviCloud = (() => {
     const shopField = byId("gdriveUrlInput");
     let pendingStaff;
     const mode = byId("loginMode");
-    mode.value = safeStorageGet("tc_login_mode", DEFAULT_RAVI_ENDPOINT ? "staff" : "local") === "staff" ? "staff" : "local";
+    mode.value = safeStorageGet("tc_login_role", "owner") === "staff" ? "staff" : "owner";
 
     const setupPin = byId("setupPinOnLogin");
     const secret = byId("loginPassInput");
     const loginId = byId("loginUserIdInput");
 
     function updateLoginMode() {
-      const online = mode.value === "staff";
-      const password = online && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
-      byId("localLoginStaffName").hidden = online;
-      byId("shopAccountLoginTitle").textContent = online ? "Shop account" : "Device account";
-      byId("shopAccountLoginHelp").textContent = online
-        ? "Staff and co-owners sign in here with their own Login ID and PIN."
-        : "Use the credentials saved on this device.";
+      const owner = mode.value === "owner";
+      const password = owner && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
+      byId("localLoginStaffName").hidden = true;
+      byId("shopAccountLoginHelp").textContent = owner
+        ? "Enter your Owner Login ID and password or PIN."
+        : "Enter the Staff ID and PIN from your owner.";
       byId("pinEnrollment").hidden = !password;
       byId("newPinFields").hidden = !password || !setupPin.checked;
-      byId("loginPassLabel").textContent = online ? "Password or 4-digit PIN" : "Password";
-      secret.placeholder = online ? "Enter password or PIN" : "Enter password";
-      const firstOwner = authUsers.some(account => account.firstOwnerSetup && account.mustChange);
-      byId("loginModeSwitch").textContent = online
-        ? (firstOwner ? "First-time owner setup" : "Use an account saved on this device")
-        : "Use online sign-in";
-      byId("loginSyncHint").textContent = online ? "Use the password or PIN assigned to your account." : (firstOwner ? "First-time owner: use ravi for the Login ID and password." : "Sign in to an account saved on this device.");
+      byId("loginSyncHint").textContent = owner && authUsers.some(account => account.firstOwnerSetup && account.mustChange)
+        && !safeStorageGet("tc_recent_online_owner", null)
+        ? "Setting up a new shop? Use ravi for the Login ID and password." : "";
     }
 
     function clearLoginSecret() {
@@ -782,38 +777,24 @@ const RaviCloud = (() => {
       secret.dispatchEvent(new Event("input"));
     }
 
-    const ownerLogin = byId("resumeOwnerLogin");
     function recallLoginId() {
       const remembered = safeStorageGet("tc_last_login_ids", {});
-      loginId.value = remembered?.[mode.value] || "";
       const saved = safeStorageGet("tc_recent_online_owner", null);
-      ownerLogin.hidden = saved?.endpoint !== staffShopLink() || !staffId.test(saved?.id || "");
-      ownerLogin.textContent = ownerLogin.hidden ? "" : "Sign in as Owner (" + saved.id + ")";
+      const localOwner = authUsers.find(account => account.role === "Owner" && !account.firstOwnerSetup);
+      loginId.value = mode.value === "owner"
+        ? (saved?.endpoint === staffShopLink() ? saved.id : remembered?.owner || localOwner?.username || "")
+        : remembered?.staff || "";
     }
 
     mode.addEventListener("change", () => {
-      safeStorageSet("tc_login_mode", mode.value);
+      safeStorageSet("tc_login_role", mode.value);
       setupPin.checked = false;
       clearLoginSecret();
       recallLoginId();
       updateLoginMode();
     });
-    ownerLogin.addEventListener("click", () => {
-      const saved = safeStorageGet("tc_recent_online_owner", null);
-      if (saved?.endpoint !== staffShopLink() || !staffId.test(saved?.id || "")) return;
-      mode.value = "staff";
-      mode.dispatchEvent(new Event("change"));
-      loginId.value = saved.id;
-      loginId.dispatchEvent(new Event("input"));
-      secret.focus();
-    });
-    byId("loginModeSwitch").addEventListener("click", () => {
-      mode.value = mode.value === "staff" ? "local" : "staff";
-      mode.dispatchEvent(new Event("change"));
-      (loginId.value ? secret : loginId).focus();
-    });
     secret.addEventListener("input", () => {
-      const password = mode.value === "staff" && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
+      const password = mode.value === "owner" && /^[A-Za-z0-9_-]{24}$/.test(secret.value.trim());
       if (!password) setupPin.checked = false;
       byId("pinEnrollment").hidden = !password;
       byId("newPinFields").hidden = !password || !setupPin.checked;

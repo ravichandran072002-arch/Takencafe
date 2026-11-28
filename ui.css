@@ -318,17 +318,6 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   .online-account-row .user-access-status { padding-inline: 5px; font-size: 11px; }
 }
 
-#loginModeSwitch {
-  display: block;
-  min-height: 40px;
-  margin: 8px auto 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 #onlineLoginIdRules { margin-top: 5px; }
 
 /* Café Counter */
@@ -371,4 +360,3 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   border-bottom: 1px solid var(--border);
 }
 .staff-bill-row .mini-btn { flex-shrink: 0; min-height: 40px; }
-#resumeOwnerLogin:not([hidden]) { display: block; margin: 12px auto 0; min-height: 40px; }

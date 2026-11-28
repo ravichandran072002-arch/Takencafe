@@ -109,6 +109,7 @@
 
   function clearPasswordChange() {
     passwordChange.hidden = true;
+    $r("ownerNewLoginId").value = "";
     $r("ownerNewPassword").value = "";
     $r("ownerConfirmPassword").value = "";
     loginButton.textContent = "Login to RAVI";
@@ -123,25 +124,52 @@
     const staff = cl($r("loginStaffNameInput").value.trim());
     if (!id || !pw) return showToast("Enter your Login ID and sign-in code.");
     loginHint.textContent = "";
-    if ($r("loginMode").value === "staff") {
+    const mode = $r("loginMode").value;
+    const ownerLogin = mode === "owner";
+    const sameLogin = () => $r("loginMode").value === mode
+      && $r("loginUserIdInput").value.trim().toLowerCase() === id
+      && $r("loginPassInput").value.trim() === pw;
+    await migrateUsers();
+    let u;
+    let verifiedHash;
+    const savedOwner = safeStorageGet("tc_recent_online_owner", null);
+    for (const account of authUsers) {
+      if (account.firstOwnerSetup && savedOwner) continue;
+      if ((account.role === "Owner") !== ownerLogin || String(account.username).trim().toLowerCase() !== id) continue;
+      const hash = account.passHash;
+      if (await verifyPw(pw, hash, account.uid)) {
+        u = account;
+        verifiedHash = hash;
+        break;
+      }
+    }
+    if (!sameLogin()) return;
+    if (!u) {
+      clearPasswordChange();
+      if (!/^(?:\d{4}|[A-Za-z0-9_-]{24})$/.test(pw)) {
+        loginHint.textContent = "Invalid login ID or password.";
+        return;
+      }
       try {
         const endpoint = RaviCloud.staffShopLink();
         const method = /^\d{4}$/.test(pw) ? "pin" : "password";
-        const enroll = method === "password" && $r("setupPinOnLogin").checked;
+        const enroll = ownerLogin && method === "password" && $r("setupPinOnLogin").checked;
         const pin = $r("newLoginPin").value;
         if (enroll && (!/^\d{4}$/.test(pin) || pin !== $r("confirmLoginPin").value)) {
           throw Error("Enter the same 4-digit PIN in both fields.");
         }
         const result = await RaviCloud.staff(endpoint, id, pw, method);
-        const sameLogin = () => $r("loginMode").value === "staff" && $r("loginUserIdInput").value.trim().toLowerCase() === id
-          && $r("loginPassInput").value.trim() === pw && RaviCloud.staffShopLink() === endpoint;
-        if (!sameLogin()) return;
+        if (!sameLogin() || RaviCloud.staffShopLink() !== endpoint) return;
+        const isOnlineOwner = result.role === "primary" || result.role === "co-owner";
+        if (isOnlineOwner !== ownerLogin) {
+          throw Error(isOnlineOwner ? "Choose Owner Login for this account." : "Choose Staff Login for this account.");
+        }
         if (enroll) await RaviCloud.enrollPin(endpoint, id, pw, pin);
-        if (!sameLogin()) return;
+        if (!sameLogin() || RaviCloud.staffShopLink() !== endpoint) return;
         $r("newLoginPin").value = "";
         $r("confirmLoginPin").value = "";
         $r("setupPinOnLogin").checked = false;
-        if (result.role === "primary" || result.role === "co-owner") {
+        if (isOnlineOwner) {
           clearCart();
           RaviCloud.startOnlineOwner(endpoint, id, result.credentials, result.role);
           openSession({ uid: "cloud-owner:" + result.staffId, username: result.staffId, role: "Owner" });
@@ -150,35 +178,20 @@
           openSession({ uid: "cloud-staff:" + result.staffId, username: result.staffId, role: "Staff" });
         }
       } catch (error) {
-        loginHint.textContent = error.message;
+        if (sameLogin()) loginHint.textContent = error.message;
       }
-      return;
-    }
-    await migrateUsers();
-    let u;
-    let verifiedHash;
-    for (const account of authUsers) {
-      if (String(account.username).trim().toLowerCase() !== id) continue;
-      const hash = account.passHash;
-      if (await verifyPw(pw, hash, account.uid)) {
-        u = account;
-        verifiedHash = hash;
-        break;
-      }
-    }
-    if (!u) {
-      clearPasswordChange();
-      loginHint.textContent = "Invalid login ID or password.";
       return;
     }
     const mustChange = u.mustChange || (u.role === "Owner" && pw === "2002");
     let nextHash;
+    let nextId = u.username;
     if (mustChange) {
       if (passwordChange.hidden) {
         passwordChange.hidden = false;
-        loginButton.textContent = "Save password and sign in";
+        $r("firstOwnerIdField").hidden = !u.firstOwnerSetup;
+        loginButton.textContent = "Save and sign in";
         loginHint.textContent = "Change the default password before signing in.";
-        $r("ownerNewPassword").focus();
+        $r(u.firstOwnerSetup ? "ownerNewLoginId" : "ownerNewPassword").focus();
         return;
       }
       const nextPassword = $r("ownerNewPassword").value.trim();
@@ -186,18 +199,26 @@
         loginHint.textContent = "Use at least 8 characters and enter the same password twice.";
         return;
       }
+      if (u.firstOwnerSetup) {
+        nextId = $r("ownerNewLoginId").value.trim().toLowerCase();
+        if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(nextId)
+          || authUsers.some(account => account !== u && account.username.toLowerCase() === nextId)) {
+          loginHint.textContent = "Choose an available Login ID with 3–32 letters, numbers, dots, dashes or underscores.";
+          return;
+        }
+      }
       nextHash = await hashPw(nextPassword);
     } else if (!verifiedHash.startsWith("pbkdf2$")) {
       nextHash = await hashPw(pw);
     }
     if (!authUsers.includes(u) || u.passHash !== verifiedHash
-        || $r("loginMode").value !== "local" || $r("loginUserIdInput").value.trim().toLowerCase() !== id || $r("loginPassInput").value.trim() !== pw) {
+        || !sameLogin()) {
       clearPasswordChange();
       loginHint.textContent = "The account changed. Please sign in again.";
       return;
     }
     if (nextHash) {
-      const updated = { ...u, passHash: nextHash, mustChange: false };
+      const updated = { ...u, username: nextId, passHash: nextHash, mustChange: false };
       delete updated.firstOwnerSetup;
       if (mustChange) updated.updatedAt = Math.max(Date.now(), (u.updatedAt || 0) + 1);
       const accounts = authUsers.map(account => account === u ? updated : account);
@@ -222,6 +243,7 @@
     const mode = $r("loginMode").value;
     const remembered = safeStorageGet("tc_last_login_ids", {});
     safeStorageSet("tc_last_login_ids", { ...remembered, [mode]: u.username });
+    safeStorageSet("tc_login_role", mode);
     $r("appLoginScreen").classList.add("hidden");
     if ($r("loginPassInput").type === "text") toggleLoginPassword();
     $r("loginPassInput").value = "";
