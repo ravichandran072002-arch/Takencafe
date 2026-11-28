@@ -585,9 +585,15 @@ const RaviCloud = (() => {
     byId("cloudStaffPanel").hidden = !allowed;
     const setup = byId("cloudOwnerSetup");
     setup.hidden = !allowed || isOnlineOwner();
+    const connect = byId("connectOnlineOwner");
+    connect.hidden = !allowed || ownerConnected();
+    if (connect.hidden) {
+      connect.open = false;
+      byId("connectOnlineOwnerForm").reset();
+      byId("connectOwnerStatus").textContent = "";
+    }
     if (allowed && !ownerConnected()) {
-      setup.open = true;
-      showOwnerSyncStatus("setup", "Enter the owner key once to connect this device.");
+      showOwnerSyncStatus("setup", "Connect your online Owner account to start automatic sync.");
     } else if (!allowed) {
       setup.open = false;
       showOwnerSyncStatus("setup", "Sign in as Owner to sync.");
@@ -973,6 +979,41 @@ const RaviCloud = (() => {
       }
       setupResult.textContent = "Copy these into Apps Script → Project Settings → Script properties.";
     }, setupResult);
+    const connectForm = byId("connectOnlineOwnerForm");
+    const connectStatus = byId("connectOwnerStatus");
+    connectForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = connectForm.querySelector("button");
+      if (button.disabled || !isOwner() || ownerConnected()) return;
+      const uid = sessionStorage.getItem("tc_logged_uid");
+      const idField = byId("connectOwnerId");
+      const credentialField = byId("connectOwnerCredential");
+      const id = idField.value.trim().toLowerCase();
+      const secret = credentialField.value.trim();
+      const endpoint = shopLink();
+      const method = /^\d{4}$/.test(secret) ? "pin" : "password";
+      if (!staffId.test(id) || (method === "password" && !/^[A-Za-z0-9_-]{24}$/.test(secret))) {
+        connectStatus.textContent = "Enter your online Owner ID and device PIN or generated online password.";
+        return;
+      }
+      button.disabled = true;
+      connectStatus.textContent = "Connecting…";
+      const stillCurrent = () => isOwner() && !ownerConnected() && sessionStorage.getItem("tc_logged_uid") === uid
+        && endpoint === shopLink() && idField.value.trim().toLowerCase() === id && credentialField.value.trim() === secret;
+      try {
+        const result = await staff(endpoint, id, secret, method);
+        if (!stillCurrent()) return;
+        if (result.role !== "primary" && result.role !== "co-owner") throw Error("Use an online Owner or Co-owner account to connect sync.");
+        startOnlineOwner(endpoint, id, result.credentials, result.role);
+        openSession({ uid: "cloud-owner:" + id, username: id, role: "Owner" });
+        setupResult.textContent = "Online Owner connected. Sync starts automatically.";
+      } catch (error) {
+        if (stillCurrent()) connectStatus.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
     run(byId("saveCloudOwnerKey"), async () => {
       const key = keyField.value.trim();
       const endpoint = shopLink();

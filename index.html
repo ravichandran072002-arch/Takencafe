@@ -1203,6 +1203,16 @@
           </form>
         </details>
 
+        <details id="connectOnlineOwner" class="cloud-disclosure" hidden>
+          <summary>Connect existing Owner account</summary>
+          <form id="connectOnlineOwnerForm" class="shop-entry-form">
+            <label>Online Owner ID<input id="connectOwnerId" type="text" autocomplete="username" required></label>
+            <label>Online Owner password or device PIN<input id="connectOwnerCredential" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="btn btn-primary">Connect &amp; sync</button>
+            <p id="connectOwnerStatus" role="status"></p>
+          </form>
+        </details>
+
         <details id="cloudOwnerSetup" class="cloud-disclosure" hidden>
           <summary>One-time Owner setup</summary>
           <div class="cloud-settings-fields">
@@ -3323,8 +3333,8 @@
       if (RaviCloud.staffActive()) return RaviCloud.syncStaff();
       if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
       if (!RaviCloud.ownerConnected()) {
-        showOwnerSyncStatus("setup", "Open One-time Owner setup and save the owner key.");
-        if (notify) document.getElementById("cloudOwnerSetup").open = true;
+        showOwnerSyncStatus("setup", "Connect your online Owner account to start automatic sync.");
+        if (notify) document.getElementById("connectOnlineOwner").open = true;
         return;
       }
       if (isSyncing) { syncQueued = true; return; }
