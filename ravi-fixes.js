@@ -121,8 +121,7 @@
     $r("appLoginScreen").classList.add("hidden");
     $r("loginPassInput").value = "";
     applyRolePermissionsUI();
-    if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
-    else showToast(`✅ Welcome ${u.username} (${u.role})`);
+    stationLogin(u, staff);
     if (settings.gdriveUrl) triggerBackgroundSync();
   };
 
@@ -291,6 +290,66 @@
     const o = window[n];
     window[n] = function () { if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return showToast("Owner / Manager mattum dhaan!"); return o.apply(this, arguments); };
   });
+
+
+  function stationLogin(u, name) {
+    const now = Date.now(), date = getTodayDDMMYYYY(new Date(now));
+    const uid = "login-" + u.uid + "-" + date;
+    let record = attendance.find(a => a.uid === uid || (a.userId === u.uid && a.date === date));
+    if (!record) {
+      record = {uid, userId:u.uid, username:u.username, name:name || u.name || u.username, role:u.role, date, inTime:getNowTimeIST(new Date(now)), inTimestamp:now, outTime:"", outTimestamp:0, duration:"", device:DEVICE_LABEL, updatedAt:now};
+      attendance.unshift(record);
+      safeStorageSet("tc_attendance", attendance);
+    }
+    if (!record.outTimestamp) {
+      activeShiftUid = record.uid;
+      localStorage.setItem("tc_active_shift_uid", record.uid);
+    }
+    updateStaffUIState();
+    goHome();
+    $r("headerSubInfo").textContent = "Hi, " + record.name + " — Punched (" + record.inTime + ")";
+    showToast("Hi, " + record.name + " — Punched (" + record.inTime + ")");
+    triggerBackgroundSync();
+  }
+  const originalTrigger = window.triggerBackgroundSync;
+  let stationSyncTimer;
+  window.triggerBackgroundSync = function () {
+    if (sessionStorage.getItem("tc_session_logged") !== "1") return;
+    clearTimeout(stationSyncTimer);
+    stationSyncTimer = setTimeout(() => originalTrigger(), 700);
+  };
+  const originalTab = window.switchTab;
+  window.switchTab = function(tab, btn) {
+    if (/advance/i.test(tab) && getLoggedAccount().role !== "Owner") return showToast("Owner access only");
+    return originalTab(tab, btn);
+  };
+  const originalPermissions = window.applyRolePermissionsUI;
+  window.applyRolePermissionsUI = function() {
+    originalPermissions();
+    const owner = getLoggedAccount().role === "Owner";
+    document.querySelectorAll('[id*="advance" i], [data-route="advances"]').forEach(el => { el.hidden = !owner; });
+  };
+  const originalCart = window.renderCart;
+  window.renderCart = function() {
+    originalCart();
+    const panel = $r("stationBillPreview");
+    if (!panel) return;
+    panel.replaceChildren();
+    for (const item of cart) {
+      const row = document.createElement("div");
+      row.className = "station-bill-row";
+      const label = document.createElement("span");
+      label.textContent = item.name + " × " + item.qty;
+      const amount = document.createElement("strong");
+      amount.textContent = "₹" + (item.price * item.qty).toFixed(2);
+      row.append(label, amount); panel.append(row);
+    }
+    const total = document.createElement("div");
+    total.textContent = "Subtotal ₹" + getCartTotals().itemsSub.toFixed(2);
+    panel.append(total);
+    panel.hidden = !cart.length;
+  };
+  window.renderCart();
 
   /* ---------- Startup ---------- */
   function injectButtons() {
