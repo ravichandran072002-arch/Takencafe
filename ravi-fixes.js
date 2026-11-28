@@ -227,6 +227,7 @@
     $r("loginPassInput").value = "";
     $r("loginPassInput").dispatchEvent(new Event("input"));
     applyRolePermissionsUI();
+    updateStaffUIState();
     if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
     else showToast(`✅ Welcome ${u.username} (${u.role})`);
     RaviCloud.refreshOwnerPanel();

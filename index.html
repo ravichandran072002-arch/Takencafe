@@ -2282,6 +2282,7 @@
     }
 
     function getCurrentActiveShift() {
+      if (isCloudStaff()) return attendance.find(shift => !shift.outTimestamp && RaviCloud.ownsRecord(shift)) || null;
       if (!activeShiftUid) return null;
       const shift = attendance.find(a => a.uid === activeShiftUid && !a.outTimestamp);
       if (!shift) { activeShiftUid = ""; localStorage.removeItem("tc_active_shift_uid"); return null; }
@@ -2354,9 +2355,11 @@
       const record = { uid: now + "-" + Math.floor(Math.random() * 10000), name, date: getTodayDDMMYYYY(new Date(now)), inTime: getNowTimeIST(new Date(now)), inTimestamp: now, outTime: "", outTimestamp: 0, duration: "", device: DEVICE_LABEL, updatedAt: now };
       RaviCloud.tagRecord(record);
       attendance.unshift(record);
-      activeShiftUid = record.uid;
       safeStorageSet("tc_attendance", attendance);
-      localStorage.setItem("tc_active_shift_uid", activeShiftUid);
+      if (!isCloudStaff()) {
+        activeShiftUid = record.uid;
+        localStorage.setItem("tc_active_shift_uid", activeShiftUid);
+      }
       updateStaffUIState(); closeStaffLoginModal();
       if (activeTabName === "staff") renderAttendance();
       triggerBackgroundSync();
