@@ -1,7 +1,7 @@
 const FOLDER_NAME = "TakenCafe_POS_Drive_Sync";
 const LIVE_FILE = "TakenCafe_Live_Sync.json";
 const SHEET_NAME = "RAVI_POS_Live_Sheet";
-const RAVI_MEMBER_LIMIT = 5;
+const RAVI_MEMBER_LIMIT = 12;
 
 function getOrCreateFolder() {
   const id = PropertiesService.getScriptProperties().getProperty("RAVI_STORAGE_FOLDER_ID");
@@ -203,7 +203,7 @@ function raviStaffDigest(secret, id, password) {
 
 function raviMergeBackup(saved, incoming) {
   const merged = { ...saved, ...incoming };
-  for (const field of ["billingPreferences", "shopAppearance"]) {
+  for (const field of ["billingPreferences", "shopAppearance", "stockAlerts"]) {
     if (saved[field] && (saved[field].updatedAt || 0) >= (incoming[field]?.updatedAt || 0)) {
       merged[field] = saved[field];
     }
@@ -226,7 +226,12 @@ function raviMergeBackup(saved, incoming) {
       const id = String(identify(row));
       if (deleted.has(id)) continue;
       const existing = rows.get(id);
-      if (!existing || (row.updatedAt || 0) > (existing.updatedAt || 0)) rows.set(id, row);
+      if (field === "attendance" && existing?.loginPunch && row.loginPunch) {
+        const first = row.inTimestamp < existing.inTimestamp ? row : existing;
+        const last = row.outTimestamp > existing.outTimestamp ? row : existing;
+        rows.set(id, { ...first, outTime: last.outTime, outTimestamp: last.outTimestamp, duration: last.duration,
+          updatedAt: Math.max(existing.updatedAt || 0, row.updatedAt || 0) });
+      } else if (!existing || (row.updatedAt || 0) > (existing.updatedAt || 0)) rows.set(id, row);
     }
     merged[field] = [...rows.values()];
   }
@@ -253,7 +258,7 @@ function raviStaffRows(rows, id, kind) {
       return { ...base, kind: "stock", by: id, note: text(row.note), amount: row.amount, manufactured: row.manufactured, expiry: row.expiry };
     }
     if (kind === "attendance") return {
-      ...base, name: id, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),
+      ...base, name: id, userId: id, role: "Staff", loginPunch: row.loginPunch === true, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),
       inTime: text(row.inTime, 20), outTime: text(row.outTime, 20), duration: text(row.duration, 32)
     };
     if (!Array.isArray(row.items) || !row.items.length || row.items.length > 200) throw Error("Invalid bill items");
@@ -306,8 +311,8 @@ function raviStaffSync(req) {
   const shop = current.settings;
   const receiptShop = shop ? { name: shop.name, ...(whatsAppPdf ? { address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi } : {}) } : undefined;
   const shopEntries = (current.shopEntries || []).filter(row => row.kind === "stock"
-    || (["advance", "message"].includes(row.kind) && row.recipient === req.id));
-  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, shopEntries, shopOperations: true });
+    || (row.kind === "message" && row.recipient === req.id));
+  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, stockAlerts: current.stockAlerts, shopEntries, shopOperations: true });
 }
 
 function raviActiveMemberCount(props) {
@@ -502,6 +507,11 @@ function doPost(e) {
         delete data.authUsers;
         delete data.deletedUserIds;
         delete data.exportSettings;
+        const stockAlerts = data.stockAlerts;
+        if (typeof stockAlerts?.updates === "boolean" && typeof stockAlerts.expiry === "boolean"
+          && Number.isSafeInteger(stockAlerts.updatedAt) && stockAlerts.updatedAt > 0) {
+          data.stockAlerts = { updates: stockAlerts.updates, expiry: stockAlerts.expiry, updatedAt: stockAlerts.updatedAt };
+        } else delete data.stockAlerts;
         const preferences = data.billingPreferences;
         if (typeof preferences?.whatsAppPdf !== "boolean" || !Number.isSafeInteger(preferences.updatedAt) || preferences.updatedAt <= 0) {
           delete data.billingPreferences;

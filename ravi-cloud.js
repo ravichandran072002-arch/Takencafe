@@ -35,7 +35,7 @@ const RaviCloud = (() => {
     "",
     "function raviMergeBackup(saved, incoming) {",
     "  const merged = { ...saved, ...incoming };",
-    "  for (const field of [\"billingPreferences\", \"shopAppearance\"]) {",
+    "  for (const field of [\"billingPreferences\", \"shopAppearance\", \"stockAlerts\"]) {",
     "    if (saved[field] && (saved[field].updatedAt || 0) >= (incoming[field]?.updatedAt || 0)) {",
     "      merged[field] = saved[field];",
     "    }",
@@ -58,7 +58,12 @@ const RaviCloud = (() => {
     "      const id = String(identify(row));",
     "      if (deleted.has(id)) continue;",
     "      const existing = rows.get(id);",
-    "      if (!existing || (row.updatedAt || 0) > (existing.updatedAt || 0)) rows.set(id, row);",
+    "      if (field === \"attendance\" && existing?.loginPunch && row.loginPunch) {",
+    "        const first = row.inTimestamp < existing.inTimestamp ? row : existing;",
+    "        const last = row.outTimestamp > existing.outTimestamp ? row : existing;",
+    "        rows.set(id, { ...first, outTime: last.outTime, outTimestamp: last.outTimestamp, duration: last.duration,",
+    "          updatedAt: Math.max(existing.updatedAt || 0, row.updatedAt || 0) });",
+    "      } else if (!existing || (row.updatedAt || 0) > (existing.updatedAt || 0)) rows.set(id, row);",
     "    }",
     "    merged[field] = [...rows.values()];",
     "  }",
@@ -85,7 +90,7 @@ const RaviCloud = (() => {
     "      return { ...base, kind: \"stock\", by: id, note: text(row.note), amount: row.amount, manufactured: row.manufactured, expiry: row.expiry };",
     "    }",
     "    if (kind === \"attendance\") return {",
-    "      ...base, name: id, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),",
+    "      ...base, name: id, userId: id, role: \"Staff\", loginPunch: row.loginPunch === true, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),",
     "      inTime: text(row.inTime, 20), outTime: text(row.outTime, 20), duration: text(row.duration, 32)",
     "    };",
     "    if (!Array.isArray(row.items) || !row.items.length || row.items.length > 200) throw Error(\"Invalid bill items\");",
@@ -138,8 +143,8 @@ const RaviCloud = (() => {
     "  const shop = current.settings;",
     "  const receiptShop = shop ? { name: shop.name, ...(whatsAppPdf ? { address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi } : {}) } : undefined;",
     "  const shopEntries = (current.shopEntries || []).filter(row => row.kind === \"stock\"",
-    "    || ([\"advance\", \"message\"].includes(row.kind) && row.recipient === req.id));",
-    "  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, shopEntries, shopOperations: true });",
+    "    || (row.kind === \"message\" && row.recipient === req.id));",
+    "  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, stockAlerts: current.stockAlerts, shopEntries, shopOperations: true });",
     "}",
     "",
     "function raviActiveMemberCount(props) {",
@@ -334,6 +339,11 @@ const RaviCloud = (() => {
     "        delete data.authUsers;",
     "        delete data.deletedUserIds;",
     "        delete data.exportSettings;",
+    "        const stockAlerts = data.stockAlerts;",
+    "        if (typeof stockAlerts?.updates === \"boolean\" && typeof stockAlerts.expiry === \"boolean\"",
+    "          && Number.isSafeInteger(stockAlerts.updatedAt) && stockAlerts.updatedAt > 0) {",
+    "          data.stockAlerts = { updates: stockAlerts.updates, expiry: stockAlerts.expiry, updatedAt: stockAlerts.updatedAt };",
+    "        } else delete data.stockAlerts;",
     "        const preferences = data.billingPreferences;",
     "        if (typeof preferences?.whatsAppPdf !== \"boolean\" || !Number.isSafeInteger(preferences.updatedAt) || preferences.updatedAt <= 0) {",
     "          delete data.billingPreferences;",
@@ -526,7 +536,7 @@ const RaviCloud = (() => {
         error.revoked = true;
         throw error;
       }
-      if (result?.reason === "member-limit") throw Error("This shop has five active members. Revoke a staff account to free a slot.");
+      if (result?.reason === "member-limit") throw Error("This shop has reached its active member limit. Revoke a staff account to free a slot.");
       if (result?.reason === "busy") throw Error("The shop server is busy. Please try again.");
       throw Error(action === "staff.login" ? "Invalid Staff ID or password." : "Owner access was rejected. Check your owner key.");
     }
@@ -714,9 +724,9 @@ const RaviCloud = (() => {
     return !staffActive() || (record.cloud?.id === staffConnection.id && record.cloud.endpoint === staffConnection.endpoint);
   }
 
-  function tagRecord(record) {
+  function tagRecord(record, stableId) {
     if (staffActive()) {
-      record.uid = "s:" + staffConnection.id + ":" + crypto.randomUUID();
+      record.uid = "s:" + staffConnection.id + ":" + (stableId || crypto.randomUUID());
       record.cloud = { endpoint: staffConnection.endpoint, id: staffConnection.id, uploadedAt: -1 };
     }
   }
@@ -774,6 +784,7 @@ const RaviCloud = (() => {
         connection.receiptShop = remote.receiptShop;
         receiveShopAppearance(remote.shopAppearance, connection.endpoint);
         mergeShopEntries(remote.shopEntries);
+        receiveStockAlerts(remote.stockAlerts);
         await notifyStaffMessages(connection, remote.shopEntries).catch(() => {});
         if (staffConnection !== connection) return;
         renderShopEntries();
@@ -905,6 +916,7 @@ const RaviCloud = (() => {
       clearLoginSecret();
       logout();
       lastBill = undefined;
+      byId("loginGreeting").hidden = true;
       closeModal();
       closePinModal();
       closeBillDrawer();

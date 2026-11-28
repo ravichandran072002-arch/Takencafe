@@ -384,3 +384,11 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 }
 .staff-activity-unread { border-inline-start-color: var(--amber); }
 .staff-activity-row time { color: var(--muted); font-size: 12px; }
+
+.login-credit { display: block; margin-top: 14px; color: var(--muted); text-align: center; }
+.launch-spinner { display: none; width: 20px; height: 20px; margin: 12px auto 0; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; }
+.login-box:has(#appLoginButton:disabled) .launch-spinner { display: block; animation: login-spin .8s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .login-box:has(#appLoginButton:disabled) .launch-spinner { animation: none; } }
+.notification-actions { display: flex; gap: 8px; margin-top: 12px; }
+#loginGreeting:not([hidden]) { display: block; font-size: 12px; color: var(--muted); }

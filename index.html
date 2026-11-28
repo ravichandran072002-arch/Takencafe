@@ -652,7 +652,7 @@
   <div class="login-screen" id="appLoginScreen">
     <form class="login-box" id="appLoginForm" onsubmit="event.preventDefault()">
       <div style="text-align:center;margin-bottom:14px;">
-        <div class="r-monogram-lg">R</div>
+        <img class="r-monogram-lg" src="./icons/icon-192.png" alt="RAVI POS" width="64" height="64" />
         <h1 id="loginAppTitle">RAVI POS</h1>
         <p id="loginShopSub">Sign in</p>
       </div>
@@ -709,6 +709,8 @@
       <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;" id="loginSyncHint" role="status">
         Use the password or PIN assigned to your account.
       </div>
+      <span class="launch-spinner" aria-label="Loading" role="status"></span>
+      <small class="login-credit">Created by Ravi</small>
     </form>
   </div>
 
@@ -718,6 +720,7 @@
       <div style="min-width:0;">
         <h1 id="headerCafeTitle">RAVI POS</h1>
         <span id="headerSubInfo">Taken Cafe</span>
+        <span id="loginGreeting" hidden></span>
       </div>
     </div>
     <div class="header-actions">
@@ -732,10 +735,14 @@
 
   <dialog id="staffActivityDialog" aria-labelledby="staffActivityTitle">
     <div class="staff-activity-heading">
-      <h2 id="staffActivityTitle">Staff notifications</h2>
+      <h2 id="staffActivityTitle">Notification Inbox</h2>
       <form method="dialog"><button class="mini-btn" aria-label="Close staff notifications">Close</button></form>
     </div>
     <div id="staffActivityList" class="shop-entry-list"></div>
+    <div class="notification-actions">
+      <button class="mini-btn" type="button" onclick="updateInboxRead(false)">Mark all read</button>
+      <button class="mini-btn" type="button" onclick="updateInboxRead(true)">Clear read</button>
+    </div>
   </dialog>
 
   <nav class="nav-tabs" id="mainNav" aria-label="Main navigation">
@@ -1121,6 +1128,11 @@
 
       <div class="card" data-settings-panel="appearance" id="appearancePanel">
         <span class="card-title">Appearance</span>
+        <fieldset class="shop-entry-form" id="stockAlertPreferences" hidden>
+          <legend>Stock notifications</legend>
+          <label><input type="checkbox" id="stockUpdatedNotice" onchange="setStockAlertPreferences()" checked /> Stock updates</label>
+          <label><input type="checkbox" id="stockExpiryNotice" onchange="setStockAlertPreferences()" checked /> Expiring tomorrow</label>
+        </fieldset>
         <div id="appearanceControls">
         <p id="shopAppearanceNotice" hidden></p>
         <div class="theme-toggle-row">
@@ -1633,7 +1645,7 @@
       "const FOLDER_NAME = \"TakenCafe_POS_Drive_Sync\";",
       "const LIVE_FILE = \"TakenCafe_Live_Sync.json\";",
       "const SHEET_NAME = \"RAVI_POS_Live_Sheet\";",
-      "const RAVI_MEMBER_LIMIT = 5;",
+      "const RAVI_MEMBER_LIMIT = 12;",
       "",
       "function getOrCreateFolder() {",
       "  const id = PropertiesService.getScriptProperties().getProperty(\"RAVI_STORAGE_FOLDER_ID\");",
@@ -2362,11 +2374,11 @@
 
     function closeStaffLoginModal() { document.getElementById("staffLoginModal").classList.remove("open"); }
 
-    function punchInStaff() {
-      const name = isCloudStaff() ? getLoggedAccount().username : document.getElementById("staffNameInput").value.trim();
+    function punchInStaff(loginAccount, dailyId) {
+      const name = loginAccount?.username || (isCloudStaff() ? getLoggedAccount().username : document.getElementById("staffNameInput").value.trim());
       if (!name) return showToast("Employee name enter pannunga!");
       const prevShift = getCurrentActiveShift();
-      if (prevShift && isCloudStaff()) return;
+      if (prevShift && isCloudStaff() && (!loginAccount || prevShift.date === getTodayDDMMYYYY())) return prevShift;
       if (prevShift) {
         const outNow = Date.now();
         prevShift.outTimestamp = outNow;
@@ -2376,7 +2388,13 @@
       }
       const now = Date.now();
       const record = { uid: now + "-" + Math.floor(Math.random() * 10000), name, date: getTodayDDMMYYYY(new Date(now)), inTime: getNowTimeIST(new Date(now)), inTimestamp: now, outTime: "", outTimestamp: 0, duration: "", device: DEVICE_LABEL, updatedAt: now };
-      RaviCloud.tagRecord(record);
+      if (loginAccount) {
+        record.loginPunch = true;
+        record.userId = loginAccount.username;
+        record.role = loginAccount.role;
+        record.uid = dailyId;
+      }
+      RaviCloud.tagRecord(record, dailyId);
       attendance.unshift(record);
       safeStorageSet("tc_attendance", attendance);
       if (!isCloudStaff()) {
@@ -2385,8 +2403,21 @@
       }
       updateStaffUIState(); closeStaffLoginModal();
       if (activeTabName === "staff") renderAttendance();
+      renderStaffActivity();
       triggerBackgroundSync();
-      showToast(`🟢 ${name} Punched IN (${record.inTime})`);
+      if (!loginAccount) showToast(`🟢 ${name} Punched IN (${record.inTime})`);
+      return record;
+    }
+
+    async function punchInOnLogin(account) {
+      const day = getTodayDDMMYYYY();
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(account.username + ":" + day));
+      if (sessionStorage.getItem("tc_logged_uid") !== account.uid) return "";
+      const hex = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
+      const uid = hex.slice(0,8) + "-" + hex.slice(8,12) + "-" + hex.slice(12,16) + "-" + hex.slice(16,20) + "-" + hex.slice(20,32);
+      const existing = attendance.find(row => (row.uid === uid || row.uid === "s:" + account.username + ":" + uid)
+        && RaviCloud.ownsRecord(row));
+      return (existing || punchInStaff(account, uid))?.inTime || "";
     }
 
     function punchOutCurrentStaff() {
@@ -2591,7 +2622,7 @@
       document.getElementById("extraSummaryMob").innerHTML = extraHtml;
       document.getElementById("gstTotalMob").textContent = "₹" + gst.toFixed(2);
       document.getElementById("grandTotalMob").textContent = "₹" + grand.toFixed(2);
-      document.getElementById("barItemCount").textContent = `${totalQty} Item${totalQty === 1 ? '' : 's'} ▲`;
+      document.getElementById("barItemCount").textContent = `${totalQty} item${totalQty === 1 ? '' : 's'} · Subtotal ₹${itemsSub.toFixed(2)}`;
       document.getElementById("barGrandTotal").textContent = "₹" + grand.toFixed(2);
       const chipsRow = document.getElementById("liveChipsRow");
       chipsRow.innerHTML = !cart.length
@@ -3109,7 +3140,7 @@
         uid: crypto.randomUUID(), kind, updatedAt: now, date: getTodayDDMMYYYY(new Date(now)),
         by: account.username, note, recipient: id, amount, ...(kind === "stock" ? { manufactured, expiry } : {})
       }));
-      entries.forEach(RaviCloud.tagRecord);
+      entries.forEach(entry => RaviCloud.tagRecord(entry));
       if (!safeStorageSet("tc_shop_entries", [...entries, ...shopEntries])) return;
       shopEntries.unshift(...entries);
       form.reset();
@@ -3141,29 +3172,30 @@
       const alert = document.getElementById("activityAlert");
       const dialog = document.getElementById("staffActivityDialog");
       const list = document.getElementById("staffActivityList");
-      alert.hidden = !canConfigureBilling();
+      alert.hidden = sessionStorage.getItem("tc_session_logged") !== "1";
       if (alert.hidden) {
         if (dialog.open) dialog.close();
         list.replaceChildren();
         return;
       }
-      const rows = staffActivityRows();
-      const saved = safeStorageGet("tc_seen_staff_activity", null);
-      const seen = new Set(saved?.endpoint === settings.gdriveUrl && Array.isArray(saved?.ids) ? saved.ids : []);
+      const state = safeStorageGet(inboxStateKey(), {});
+      const cleared = new Set(state.cleared || []);
+      const rows = inboxRows().filter(row => !cleared.has(row.uid));
+      const seen = new Set(state.read || []);
       const unread = rows.filter(row => !seen.has(row.uid));
-      alert.textContent = unread.length ? "🔔 " + unread[0].id + " " + activityLabels[unread[0].kind]
+      alert.textContent = unread.length ? "🔔 " + inboxTitle(unread[0])
         + (unread.length > 1 ? " +" + (unread.length - 1) : "") : "🔔 Notifications";
       alert.setAttribute("aria-label", "Staff notifications" + (unread.length ? ", " + unread.length + " unread" : ""));
       if (!dialog.open) return;
       list.replaceChildren();
-      if (!rows.length) list.textContent = "No recent staff activity.";
+      if (!rows.length) list.textContent = "No notifications."
       for (const row of rows) {
         const item = document.createElement("p");
         const time = new Date(row.at);
         item.className = "staff-activity-row";
         if (!seen.has(row.uid)) item.classList.add("staff-activity-unread");
         const label = document.createElement("strong");
-        label.textContent = row.id + " " + activityLabels[row.kind];
+        label.textContent = inboxTitle(row);
         const stamp = document.createElement("time");
         stamp.dateTime = time.toISOString();
         stamp.textContent = getTodayDDMMYYYY(time) + " · " + getNowTimeIST(time);
@@ -3173,24 +3205,79 @@
     }
 
     function viewStaffActivity() {
-      if (!canConfigureBilling()) return;
+      if (sessionStorage.getItem("tc_session_logged") !== "1") return;
       document.getElementById("staffActivityDialog").showModal();
       renderStaffActivity();
     }
 
-    function dismissStaffActivity() {
-      if (!canConfigureBilling()) return;
-      const saved = safeStorageGet("tc_seen_staff_activity", null);
-      const previous = saved?.endpoint === settings.gdriveUrl && Array.isArray(saved?.ids) ? saved.ids : [];
-      const ids = [...new Set([...staffActivityRows().map(row => row.uid), ...previous])].slice(0, 150);
-      safeStorageSet("tc_seen_staff_activity", { endpoint: settings.gdriveUrl, ids });
+    function inboxStateKey() {
+      return "tc_inbox:" + (typeof RaviCloud === "undefined" ? settings.gdriveUrl : RaviCloud.staffShopLink()) + ":" + sessionStorage.getItem("tc_logged_uid");
+    }
+
+    function inboxTitle(row) {
+      return row.text || row.id + " " + activityLabels[row.kind];
+    }
+
+    function inboxRows() {
+      const owner = canConfigureBilling();
+      const id = getLoggedAccount().username;
+      const prefs = stockAlertPreferences();
+      const earliest = Date.now() - 7 * 86400000;
+      const today = parseAnyDateToISO(getTodayDDMMYYYY());
+      const tomorrow = new Date(Date.parse(today + "T00:00:00Z") + 86400000).toISOString().slice(0, 10);
+      const rows = owner ? staffActivityRows() : [];
+      for (const row of shopEntries) {
+        if (!owner && row.kind === "message" && row.recipient === id && row.updatedAt >= earliest) {
+          rows.push({ uid: row.uid, at: row.updatedAt, text: row.note });
+        }
+        if (row.kind !== "stock") continue;
+        if (prefs.updates && row.updatedAt >= earliest) rows.push({ uid: row.uid + ":stock", at: row.updatedAt, text: "Stock updated · " + row.note });
+        if (prefs.expiry && row.expiry === tomorrow) rows.push({ uid: row.uid + ":expiry:" + tomorrow, at: Date.parse(today + "T00:00:00+05:30"), text: "Expires tomorrow · " + row.note });
+      }
+      return rows.sort((a, b) => b.at - a.at).slice(0, 50);
+    }
+
+    function updateInboxRead(clear) {
+      if (sessionStorage.getItem("tc_session_logged") !== "1") return;
+      const key = inboxStateKey();
+      const state = safeStorageGet(key, {});
+      const read = new Set(state.read || []);
+      const cleared = new Set(state.cleared || []);
+      for (const row of inboxRows()) {
+        if (!clear) read.add(row.uid);
+        else if (read.has(row.uid)) cleared.add(row.uid);
+      }
+      safeStorageSet(key, { read: [...read].slice(-300), cleared: [...cleared].slice(-300) });
       renderStaffActivity();
+    }
+
+    function stockAlertPreferences() {
+      return settings.stockAlerts || { updates: true, expiry: true, updatedAt: 0 };
+    }
+
+    function receiveStockAlerts(prefs) {
+      if (!prefs || typeof prefs.updates !== "boolean" || typeof prefs.expiry !== "boolean"
+        || (prefs.updatedAt || 0) <= stockAlertPreferences().updatedAt) return;
+      settings.stockAlerts = prefs;
+      safeStorageSet("tc_settings", settings);
+    }
+
+    function setStockAlertPreferences() {
+      if (!canConfigureBilling()) return;
+      settings.stockAlerts = { updates: document.getElementById("stockUpdatedNotice").checked,
+        expiry: document.getElementById("stockExpiryNotice").checked, updatedAt: Date.now() };
+      safeStorageSet("tc_settings", settings);
+      renderShopEntries();
+      triggerBackgroundSync();
     }
 
     function renderShopEntries() {
       renderStaffActivity();
       const staff = isCloudStaff();
       const owner = getLoggedAccount().role === "Owner" && sessionStorage.getItem("tc_session_logged") === "1";
+      document.getElementById("stockAlertPreferences").hidden = !owner;
+      document.getElementById("stockUpdatedNotice").checked = stockAlertPreferences().updates;
+      document.getElementById("stockExpiryNotice").checked = stockAlertPreferences().expiry;
       const id = getLoggedAccount().username;
       const rows = shopEntries.filter(row => !staff || (row.cloud ? RaviCloud.ownsRecord(row) : row.kind === "stock" || row.recipient === id))
         .sort((a,b) => b.updatedAt - a.updatedAt);
@@ -3209,12 +3296,12 @@
       const tomorrow = new Date(Date.parse(today + "T00:00:00Z") + 86400000).toISOString().slice(0,10);
       const expiring = stock.filter(row => row.expiry === tomorrow);
       const alert = document.getElementById("stockAlert");
-      alert.hidden = !owner || !expiring.length;
+      alert.hidden = !owner || !stockAlertPreferences().expiry || !expiring.length;
       alert.textContent = expiring.length + " expiring tomorrow";
       const stockLabel = row => row.expiry === tomorrow ? " · Expires tomorrow" : row.expiry < today ? " · Expired" : "";
       render("stockEntryList", stock.map(row => `${row.note} · Qty ${row.amount} · Made ${row.manufactured} · Expires ${row.expiry}${stockLabel(row)}`));
-      document.getElementById("staffEntryTitle").textContent = staff ? "Messages and advances" : "Staff activity";
-      render("staffEntryList", rows.filter(row => (owner || staff) && ["advance", "message"].includes(row.kind)).map(row =>
+      document.getElementById("staffEntryTitle").textContent = staff ? "Messages" : "Staff activity";
+      render("staffEntryList", rows.filter(row => (owner && row.kind === "advance") || ((owner || staff) && row.kind === "message")).map(row =>
         row.kind === "advance" ? `${row.date} · ${row.recipient} · ₹${row.amount} advance` : `${row.date} · ${row.by} → ${row.recipient} · ${row.note}`));
       render("cashEntryList", owner ? rows.filter(row => row.kind === "cash").map(row => `${row.date} · ₹${row.amount} · ${row.note}`) : []);
     }
@@ -3494,6 +3581,31 @@
       document.getElementById("syncCloudNow").disabled = state === "syncing";
     }
 
+    const ownerRecordBaselines = new Map();
+
+    function ownerRecordDelta(endpoint, payload) {
+      const previous = ownerRecordBaselines.get(endpoint) || {};
+      const next = {};
+      const delta = { ...payload };
+      const fields = {
+        menu: row => row.id, bills: row => row.uid || row.billNo,
+        expenses: row => row.uid || (row.date + row.note + row.amount),
+        shopEntries: row => row.uid, attendance: row => row.uid,
+        deletedMenuIds: id => id, deletedBillIds: id => id, deletedExpenseIds: id => id
+      };
+      for (const [field, identify] of Object.entries(fields)) {
+        next[field] = new Map();
+        delta[field] = payload[field].filter(row => {
+          const id = identify(row);
+          const snapshot = JSON.stringify(row);
+          next[field].set(id, snapshot);
+          return previous[field]?.get(id) !== snapshot;
+        });
+        if (!delta[field].length) delete delta[field];
+      }
+      return { delta, next };
+    }
+
     async function syncNowBothWays(notify) {
       if (RaviCloud.staffActive()) return RaviCloud.syncStaff();
       if (getLoggedAccount().role !== "Owner" || sessionStorage.getItem("tc_session_logged") !== "1") return;
@@ -3519,11 +3631,15 @@
           shopEntries: shopEntries.filter(row => !row.cloud),
           attendance: attendance.filter(row => !row.cloud),
           ...(currentShopAppearance() ? { shopAppearance: currentShopAppearance() } : {}),
+          stockAlerts: stockAlertPreferences(),
           ...(settings.billingPreferences ? { billingPreferences: settings.billingPreferences } : {}),
           settings: { name: settings.name, shopNameConfigured: Boolean(configuredShopName(settings)), phone: settings.phone || "", address: settings.address, upi: settings.upi, gstin: settings.gstin, paperSize: settings.paperSize, updatedAt: settings.updatedAt || 0 }
         };
-        const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
+        const endpoint = settings.gdriveUrl;
+        const { delta, next } = ownerRecordDelta(endpoint, payload);
+        const saved = await RaviCloud.owner(endpoint, "backup.write", { data: delta });
         if (!stillConnected()) return;
+        ownerRecordBaselines.set(endpoint, next);
         if (Array.isArray(saved.staffActivity)) {
           safeStorageSet("tc_staff_activity", { endpoint: settings.gdriveUrl, events: saved.staffActivity });
         }
@@ -3590,6 +3706,7 @@
         attendance = Array.from(attMap.values()).sort((a, b) => (b.inTimestamp || 0) - (a.inTimestamp || 0)); safeStorageSet("tc_attendance", attendance);
       }
       mergeShopEntries(remote.shopEntries);
+      receiveStockAlerts(remote.stockAlerts);
       if (remote.exportSettings) {
         const form = document.getElementById("driveExportForm");
         if (!form.contains(document.activeElement)) {
@@ -3650,7 +3767,7 @@
     showSettingsPanel("shop");
     applySettingsToInputs();
     checkSessionLogin();
-    document.getElementById("staffActivityDialog").addEventListener("close", dismissStaffActivity);
+
     document.getElementById("attendanceExportFrom").value = parseAnyDateToISO(getTodayDDMMYYYY());
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
 

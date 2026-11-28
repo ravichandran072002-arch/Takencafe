@@ -249,9 +249,17 @@
     $r("loginPassInput").value = "";
     $r("loginPassInput").dispatchEvent(new Event("input"));
     applyRolePermissionsUI();
+    switchTab("pos", $r("nav-pos"));
     updateStaffUIState();
-    if (staff) { $r("staffNameInput").value = staff; punchInStaff(); }
-    else showToast(`✅ Welcome ${u.username} (${u.role})`);
+    const greeting = $r("loginGreeting");
+    greeting.hidden = false;
+    greeting.textContent = "Hi, " + u.username;
+    void punchInOnLogin(u).then(time => {
+      if (sessionStorage.getItem("tc_logged_uid") !== u.uid) return;
+      const text = "Hi, " + u.username + (time ? " — Punched (" + time + ")" : "");
+      greeting.textContent = text;
+      showToast(text);
+    }).catch(() => showToast("Hi, " + u.username));
     RaviCloud.refreshOwnerPanel();
     if (u.role === "Owner" && settings.gdriveUrl) triggerBackgroundSync();
   }
