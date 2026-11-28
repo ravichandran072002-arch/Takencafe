@@ -19,7 +19,7 @@ const RaviCloud = (() => {
     "}",
     "",
     "function doGet(e) {",
-    "  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, memberLimit: RAVI_MEMBER_LIMIT });",
+    "  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, staffActivity: true, memberLimit: RAVI_MEMBER_LIMIT });",
     "}",
     "",
     "function raviEqual(left, right) {",
@@ -102,6 +102,21 @@ const RaviCloud = (() => {
     "function raviValidStockDates(row) {",
     "  const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;",
     "  return datePattern.test(row.manufactured) && datePattern.test(row.expiry) && row.manufactured <= row.expiry;",
+    "}",
+    "",
+    "function raviSaveStaffActivity(props, req) {",
+    "  if (!Array.isArray(req.events) || !req.events.length || req.events.length > 25) return false;",
+    "  const now = Date.now();",
+    "  if (req.events.some(event => !event || !/^[a-f0-9-]{36}$/.test(event.uid || \"\")",
+    "    || ![\"login\", \"logout\"].includes(event.kind) || !Number.isSafeInteger(event.at)",
+    "    || event.at <= 0 || event.at > now + 300000)) return false;",
+    "  const key = \"RAVI_STAFF_ACTIVITY\";",
+    "  const rows = new Map(JSON.parse(props.getProperty(key) || \"[]\").map(event => [event.uid, event]));",
+    "  for (const { uid, kind, at } of req.events) {",
+    "    if (at >= now - 7 * 86400000 && !rows.has(uid)) rows.set(uid, { uid, kind, at, id: req.id });",
+    "  }",
+    "  props.setProperty(key, JSON.stringify([...rows.values()].sort((a, b) => b.at - a.at).slice(0, 50)));",
+    "  return true;",
     "}",
     "",
     "function raviStaffSync(req) {",
@@ -248,6 +263,9 @@ const RaviCloud = (() => {
     "      const verified = pinLogin || (accountLogin && raviVerifyAccount(props, staffPepper, req));",
     "      if (req.action === \"staff.login\") return raviReply(verified",
     "        ? { ok: true, staffId: req.id, role: raviRole(props, req.id) } : bad);",
+    "      if (req.action === \"staff.activity\") {",
+    "        return raviReply(verified && raviRole(props, req.id) === \"staff\" && raviSaveStaffActivity(props, req) ? { ok: true } : bad);",
+    "      }",
     "      if (req.action === \"staff.sync\") return verified ? raviStaffSync(req) : raviReply({ ok: false, reason: \"revoked\" });",
     "",
     "      const primaryId = props.getProperty(\"RAVI_PRIMARY_ID\");",
@@ -349,7 +367,7 @@ const RaviCloud = (() => {
     "        fields.delete(\"syncedAt\");",
     "        const changed = [...fields].some(field => JSON.stringify(current[field]) !== JSON.stringify(merged[field]));",
     "        if (changed || props.getProperty(\"RAVI_SHEET_DIRTY\")) writeBackup(merged, true);",
-    "        return raviReply({ ok: true, data: merged });",
+    "        return raviReply({ ok: true, data: merged, staffActivity: JSON.parse(props.getProperty(\"RAVI_STAFF_ACTIVITY\") || \"[]\") });",
     "      }",
     "",
     "      const target = accountLogin ? req.target : req.id;",
@@ -465,6 +483,9 @@ const RaviCloud = (() => {
     } catch (error) {
       if (protocolCache.get(endpoint) === entry) protocolCache.delete(endpoint);
       throw error;
+    }
+    if (action === "staff.activity" && info.staffActivity !== true) {
+      return { unsupported: true };
     }
     if (action === "staff.password.reset" && info.accountPasswordReset !== true) {
       protocolCache.delete(endpoint);
@@ -587,7 +608,7 @@ const RaviCloud = (() => {
 
   function refreshOwnerPanel() {
     const allowed = isOwner();
-    byId("cloudStaffPanel").hidden = !allowed;
+    byId("cloudStaffPanel").hidden = !ownerConnected();
     const setup = byId("cloudOwnerSetup");
     setup.hidden = !allowed || isOnlineOwner();
     const connect = byId("connectOnlineOwner");
@@ -645,6 +666,33 @@ const RaviCloud = (() => {
     staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
   }
 
+  function activityQueue() {
+    return safeStorageGet("tc_staff_activity_queue", []);
+  }
+
+  function recordStaffActivity(connection, kind) {
+    const { endpoint, id } = connection;
+    const queue = activityQueue().concat({ endpoint, id, kind, uid: crypto.randomUUID(), at: Date.now() });
+    safeStorageSet("tc_staff_activity_queue", queue.slice(-100));
+    void flushStaffActivity(connection);
+  }
+
+  async function flushStaffActivity(connection) {
+    if (!navigator.onLine) return;
+    const { endpoint, id, credentials } = connection;
+    const events = activityQueue().filter(row => row.endpoint === endpoint && row.id === id).slice(0, 25);
+    if (!events.length) return;
+    try {
+      const result = await request(endpoint, "staff.activity", { id, ...credentials,
+        events: events.map(({ uid, kind, at }) => ({ uid, kind, at })) });
+      if (result.unsupported) return;
+      const sent = new Set(events.map(event => event.uid));
+      safeStorageSet("tc_staff_activity_queue", activityQueue().filter(event => !sent.has(event.uid)));
+    } catch {
+      // Retry with this staff account's credentials on its next sync or login.
+    }
+  }
+
   function startStaffSession(endpoint, id, credentials) {
     staffConnection = { endpoint, id, credentials };
     safeStorageSet("tc_login_role", "staff");
@@ -652,6 +700,7 @@ const RaviCloud = (() => {
     clearCart();
     clearTimeout(staffExpiry);
     staffExpiry = setTimeout(() => logoutApp(), 8 * 60 * 60 * 1000);
+    recordStaffActivity(staffConnection, "login");
     syncStaff();
   }
 
@@ -674,6 +723,7 @@ const RaviCloud = (() => {
     const connection = staffConnection;
     if (!connection || syncingStaff || !navigator.onLine) return;
     syncingStaff = true;
+    if (staffActive()) void flushStaffActivity(connection);
     const badge = byId("syncStatusBadge");
     try {
       const batch = records => records.filter(record => record.cloud?.id === connection.id && record.cloud.endpoint === connection.endpoint
@@ -808,6 +858,7 @@ const RaviCloud = (() => {
     const logout = window.logoutApp;
     window.logoutApp = function () {
       clearTimeout(staffExpiry);
+      if (staffActive()) recordStaffActivity(staffConnection, "logout");
       staffConnection = undefined;
       if (localMenu) {
         menu = localMenu;
@@ -857,7 +908,7 @@ const RaviCloud = (() => {
       count.hidden = !Number.isInteger(activeCount) || !Number.isInteger(memberLimit);
       count.textContent = count.hidden ? "" : activeCount + " of " + memberLimit + " active members, including the owner";
       const list = byId("cloudStaffList");
-      const expanded = new Set([...list.querySelectorAll("details[open]")].map(row => row.dataset.account));
+      const expanded = list.querySelector("details[open]")?.dataset.account || pendingPins?.find(id => !revokedIds?.includes(id));
       list.replaceChildren();
       if (ownerConnection) ownerConnection.role = canManageOwners ? "primary" : "co-owner";
       updateUserAccountForm();
@@ -888,7 +939,7 @@ const RaviCloud = (() => {
           return groups.get(title);
         }
         details.dataset.account = id;
-        details.open = expanded.has(id) || Boolean(pendingPins?.includes(id) && !blocked);
+        details.open = expanded === id;
         const addAction = (title, label, action, message) => {
           const button = document.createElement("button");
           button.type = "button";
@@ -925,6 +976,7 @@ const RaviCloud = (() => {
             byId("onlineUserMethod").value = "pin";
             byId("newLoginId").value = id;
             updateUserAccountForm();
+            byId("onlineAccountCreate").scrollIntoView({ block: "nearest" });
             byId("assignedStaffPin").focus();
           };
           group("Password and PIN").append(reset);

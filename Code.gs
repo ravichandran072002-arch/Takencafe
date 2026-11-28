@@ -184,7 +184,7 @@ function raviReply(data) {
 }
 
 function doGet(e) {
-  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, memberLimit: RAVI_MEMBER_LIMIT });
+  return raviReply({ protocol: RAVI_PROTOCOL, devicePin: true, ownerStaffPin: true, accountPasswordReset: true, shopOperations: true, staffActivity: true, memberLimit: RAVI_MEMBER_LIMIT });
 }
 
 function raviEqual(left, right) {
@@ -267,6 +267,21 @@ function raviStaffRows(rows, id, kind) {
 function raviValidStockDates(row) {
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   return datePattern.test(row.manufactured) && datePattern.test(row.expiry) && row.manufactured <= row.expiry;
+}
+
+function raviSaveStaffActivity(props, req) {
+  if (!Array.isArray(req.events) || !req.events.length || req.events.length > 25) return false;
+  const now = Date.now();
+  if (req.events.some(event => !event || !/^[a-f0-9-]{36}$/.test(event.uid || "")
+    || !["login", "logout"].includes(event.kind) || !Number.isSafeInteger(event.at)
+    || event.at <= 0 || event.at > now + 300000)) return false;
+  const key = "RAVI_STAFF_ACTIVITY";
+  const rows = new Map(JSON.parse(props.getProperty(key) || "[]").map(event => [event.uid, event]));
+  for (const { uid, kind, at } of req.events) {
+    if (at >= now - 7 * 86400000 && !rows.has(uid)) rows.set(uid, { uid, kind, at, id: req.id });
+  }
+  props.setProperty(key, JSON.stringify([...rows.values()].sort((a, b) => b.at - a.at).slice(0, 50)));
+  return true;
 }
 
 function raviStaffSync(req) {
@@ -413,6 +428,9 @@ function doPost(e) {
       const verified = pinLogin || (accountLogin && raviVerifyAccount(props, staffPepper, req));
       if (req.action === "staff.login") return raviReply(verified
         ? { ok: true, staffId: req.id, role: raviRole(props, req.id) } : bad);
+      if (req.action === "staff.activity") {
+        return raviReply(verified && raviRole(props, req.id) === "staff" && raviSaveStaffActivity(props, req) ? { ok: true } : bad);
+      }
       if (req.action === "staff.sync") return verified ? raviStaffSync(req) : raviReply({ ok: false, reason: "revoked" });
 
       const primaryId = props.getProperty("RAVI_PRIMARY_ID");
@@ -514,7 +532,7 @@ function doPost(e) {
         fields.delete("syncedAt");
         const changed = [...fields].some(field => JSON.stringify(current[field]) !== JSON.stringify(merged[field]));
         if (changed || props.getProperty("RAVI_SHEET_DIRTY")) writeBackup(merged, true);
-        return raviReply({ ok: true, data: merged });
+        return raviReply({ ok: true, data: merged, staffActivity: JSON.parse(props.getProperty("RAVI_STAFF_ACTIVITY") || "[]") });
       }
 
       const target = accountLogin ? req.target : req.id;

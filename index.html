@@ -723,12 +723,20 @@
     <div class="header-actions">
       <button class="sync-badge" id="mainNavToggle" type="button" aria-controls="mainNav" aria-expanded="true" onclick="toggleMainNavigation(this)">Navigation</button>
       <button class="staff-badge logged-out" id="headerStaffBtn" onclick="openStaffLoginModal()">👤 Shift</button>
-      <button class="sync-badge" id="punchAlert" type="button" hidden onclick="viewPunchAlerts()"></button>
+      <button class="sync-badge" id="activityAlert" type="button" hidden aria-haspopup="dialog" onclick="viewStaffActivity()"></button>
       <button class="sync-badge" id="stockAlert" type="button" hidden onclick="switchTab('stock', document.getElementById('nav-stock'))"></button>
       <button class="install-btn" id="installAppBtn" onclick="triggerInstallApp()">⬇ App</button>
       <button class="sync-badge" id="syncStatusBadge" onclick="syncNowBothWays(true)">☁️ Sync</button>
     </div>
   </header>
+
+  <dialog id="staffActivityDialog" aria-labelledby="staffActivityTitle">
+    <div class="staff-activity-heading">
+      <h2 id="staffActivityTitle">Staff notifications</h2>
+      <form method="dialog"><button class="mini-btn" aria-label="Close staff notifications">Close</button></form>
+    </div>
+    <div id="staffActivityList" class="shop-entry-list"></div>
+  </dialog>
 
   <nav class="nav-tabs" id="mainNav" aria-label="Main navigation">
     <button class="active" id="nav-pos" onclick="switchTab('pos', this)">Billing</button>
@@ -1171,12 +1179,10 @@
             <h3 id="staff-accounts-title">Manage existing users</h3>
             <input id="staffAccountSearch" type="search" placeholder="Search login IDs" aria-label="Search login IDs" oninput="filterStaffAccounts()" />
             <section class="user-account-list" id="localAccounts">
-              <h3>Existing device accounts</h3>
               <ul id="loginUsersTable" class="user-list"></ul>
             </section>
             <section class="user-account-list" id="cloudStaffPanel" hidden>
               <div class="cloud-settings-heading">
-                <h3>Shop accounts</h3>
                 <button type="button" class="btn btn-outline" id="listCloudStaff">Refresh list</button>
               </div>
               <p id="cloudOwnershipNote" hidden>Co-owners manage the shop and regular staff. Transferring ownership ends your primary Owner access.</p>
@@ -2163,7 +2169,7 @@
       const logged = sessionStorage.getItem("tc_session_logged") === "1";
       const account = getLoggedAccount();
       const cloud = typeof RaviCloud !== "undefined" ? RaviCloud : null;
-      const canManageDeviceAccounts = logged && account.isOwnerOrMgr && !cloud?.isOnlineOwner();
+      const canManageDeviceAccounts = logged && account.isOwnerOrMgr && !cloud?.ownerConnected();
       const canCreateOnline = logged && account.role === "Owner";
       document.getElementById("userAccessControlCard").hidden = !canManageDeviceAccounts && !canCreateOnline;
       document.getElementById("localAccounts").hidden = !canManageDeviceAccounts;
@@ -2242,6 +2248,10 @@
       summary.append(identity, badge);
       actions.className = "user-row-actions";
       details.append(summary, actions);
+      summary.addEventListener("click", () => {
+        if (details.open) return;
+        for (const other of row.parentElement.querySelectorAll("details[open]")) other.open = false;
+      });
       row.append(details);
       return { row, actions, details };
     }
@@ -3077,37 +3087,70 @@
       showToast("Saved on this device.");
     }
 
-    function unreadPunchIns() {
-      if (!canConfigureBilling()) return [];
-      const day = getTodayDDMMYYYY();
-      const seen = safeStorageGet("tc_seen_punch_ins", {});
-      const ids = new Set(seen.day === day && Array.isArray(seen.ids) ? seen.ids : []);
-      return attendance.filter(shift => shift.date === day && shift.inTimestamp
-        && /^s:[a-z0-9._-]+:/.test(shift.uid) && !ids.has(shift.uid)
-        && (!shift.cloud || shift.cloud.endpoint === settings.gdriveUrl));
+    const activityLabels = {
+      login: "logged in", logout: "logged out", punchIn: "punched in", punchOut: "punched out"
+    };
+
+    function staffActivityRows() {
+      const endpoint = settings.gdriveUrl;
+      const log = safeStorageGet("tc_staff_activity", null);
+      const rows = log?.endpoint === endpoint && Array.isArray(log?.events) ? log.events.slice() : [];
+      const earliest = Date.now() - 7 * 86400000;
+      for (const shift of attendance) {
+        if (!/^s:[a-z0-9._-]+:/.test(shift.uid) || (shift.cloud && shift.cloud.endpoint !== endpoint)) continue;
+        if (shift.inTimestamp >= earliest) rows.push({ uid: shift.uid + ":in", id: shift.name, kind: "punchIn", at: shift.inTimestamp });
+        if (shift.outTimestamp >= earliest) rows.push({ uid: shift.uid + ":out", id: shift.name, kind: "punchOut", at: shift.outTimestamp });
+      }
+      return rows.filter(row => row.at >= earliest && Object.hasOwn(activityLabels, row.kind))
+        .sort((a, b) => b.at - a.at).slice(0, 50);
     }
 
-    function renderPunchAlert() {
-      const alert = document.getElementById("punchAlert");
-      const shifts = unreadPunchIns();
-      alert.hidden = shifts.length === 0;
-      alert.textContent = shifts.length === 1
-        ? shifts[0].name + " punched in"
-        : shifts.length + " staff punch-ins";
+    function renderStaffActivity() {
+      const alert = document.getElementById("activityAlert");
+      const dialog = document.getElementById("staffActivityDialog");
+      const list = document.getElementById("staffActivityList");
+      alert.hidden = !canConfigureBilling();
+      if (alert.hidden) {
+        if (dialog.open) dialog.close();
+        list.replaceChildren();
+        return;
+      }
+      const rows = staffActivityRows();
+      const saved = safeStorageGet("tc_seen_staff_activity", null);
+      const seen = new Set(saved?.endpoint === settings.gdriveUrl && Array.isArray(saved?.ids) ? saved.ids : []);
+      const unread = rows.filter(row => !seen.has(row.uid));
+      alert.textContent = unread.length ? "🔔 " + unread[0].id + " " + activityLabels[unread[0].kind]
+        + (unread.length > 1 ? " +" + (unread.length - 1) : "") : "🔔 Notifications";
+      alert.setAttribute("aria-label", "Staff notifications" + (unread.length ? ", " + unread.length + " unread" : ""));
+      if (!dialog.open) return;
+      list.replaceChildren();
+      if (!rows.length) list.textContent = "No recent staff activity.";
+      for (const row of rows) {
+        const item = document.createElement("p");
+        const time = new Date(row.at);
+        item.textContent = row.id + " " + activityLabels[row.kind] + " · "
+          + getTodayDDMMYYYY(time) + " " + getNowTimeIST(time);
+        list.append(item);
+      }
     }
 
-    function viewPunchAlerts() {
-      const shifts = unreadPunchIns();
-      if (!shifts.length) return;
-      const day = getTodayDDMMYYYY();
-      const seen = safeStorageGet("tc_seen_punch_ins", {});
-      const ids = seen.day === day && Array.isArray(seen.ids) ? seen.ids : [];
-      safeStorageSet("tc_seen_punch_ins", { day, ids: [...ids, ...shifts.map(shift => shift.uid)] });
-      switchTab("staff", document.getElementById("nav-staff"));
+    function viewStaffActivity() {
+      if (!canConfigureBilling()) return;
+      document.getElementById("staffActivityDialog").showModal();
+      renderStaffActivity();
+    }
+
+    function dismissStaffActivity() {
+      if (!canConfigureBilling()) return;
+      const saved = safeStorageGet("tc_seen_staff_activity", null);
+      const previous = saved?.endpoint === settings.gdriveUrl && Array.isArray(saved?.ids) ? saved.ids : [];
+      const ids = [...new Set([...staffActivityRows().map(row => row.uid), ...previous])].slice(0, 150);
+      safeStorageSet("tc_seen_staff_activity", { endpoint: settings.gdriveUrl, ids });
+      renderStaffActivity();
     }
 
     function renderShopEntries() {
-      renderPunchAlert();
+      renderStaffActivity();
       const staff = isCloudStaff();
       const owner = getLoggedAccount().role === "Owner" && sessionStorage.getItem("tc_session_logged") === "1";
       const id = getLoggedAccount().username;
@@ -3443,6 +3486,9 @@
         };
         const saved = await RaviCloud.owner(settings.gdriveUrl, "backup.write", { data: payload });
         if (!stillConnected()) return;
+        if (Array.isArray(saved.staffActivity)) {
+          safeStorageSet("tc_staff_activity", { endpoint: settings.gdriveUrl, events: saved.staffActivity });
+        }
         if (saved.data) await mergeTwoWayData(saved.data);
         if (!stillConnected()) return;
         document.getElementById("syncStatusBadge").textContent = "☁️ Synced";
@@ -3566,6 +3612,7 @@
     showSettingsPanel("shop");
     applySettingsToInputs();
     checkSessionLogin();
+    document.getElementById("staffActivityDialog").addEventListener("close", dismissStaffActivity);
     document.getElementById("attendanceExportFrom").value = parseAnyDateToISO(getTodayDDMMYYYY());
     renderCategories(); renderMenu(); renderCart(); updateStaffUIState();
 

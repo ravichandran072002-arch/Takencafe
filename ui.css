@@ -360,3 +360,18 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
   border-bottom: 1px solid var(--border);
 }
 .staff-bill-row .mini-btn { flex-shrink: 0; min-height: 40px; }
+
+#activityAlert { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#staffActivityDialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: 70vh;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  overflow: auto;
+}
+#staffActivityDialog::backdrop { background: rgb(0 0 0 / 55%); }
+.staff-activity-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.staff-activity-heading h2 { font-size: 17px; }
