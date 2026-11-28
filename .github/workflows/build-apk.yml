@@ -39,6 +39,32 @@ jobs:
           npx cap add android
           echo 'configurations.all { resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22", "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22" } }' >> android/app/build.gradle
 
+      - name: Install Android Google credential bridge
+        run: |
+          package_dir=android/app/src/main/java/com/takencafe/ravi/fresh
+          cp native/android/RaviGoogleCredentials.java "$package_dir/"
+          cat > "$package_dir/MainActivity.java" <<'JAVA'
+          package com.takencafe.ravi.fresh;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(RaviGoogleCredentials.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA
+          cat >> android/app/build.gradle <<'GRADLE'
+          dependencies {
+              implementation 'androidx.credentials:credentials:1.3.0'
+              implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
+              implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+          }
+          GRADLE
+
       - name: Apply RAVI Android launcher icons
         run: |
           python3 -m venv .icon-tools
