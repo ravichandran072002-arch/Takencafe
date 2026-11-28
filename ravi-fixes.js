@@ -257,7 +257,6 @@
     void punchInOnLogin(u).then(time => {
       if (sessionStorage.getItem("tc_logged_uid") !== u.uid) return;
       const text = "Hi, " + u.username + (time ? " — Punched (" + time + ")" : "");
-      greeting.textContent = text;
       showToast(text);
     }).catch(() => showToast("Hi, " + u.username));
     RaviCloud.refreshOwnerPanel();
@@ -327,7 +326,6 @@
       }
       list.append(row);
     }
-    filterStaffAccounts();
   };
 
   /* ---------- 2. Delete PIN (hashed, owner-set, no hardcoded value) ---------- */
@@ -388,7 +386,7 @@
   const pinForm = $r("deletePinForm");
   const currentPinInput = $r("deletePinCurrent");
   const pinStatus = $r("deletePinStatus");
-  const isPinOwner = () => sessionStorage.getItem("tc_session_logged") === "1" && getLoggedAccount().role === "Owner";
+  const isPinOwner = () => primaryOwnerControls();
 
   function updatePinSettings() {
     pinSettings.hidden = !isPinOwner();

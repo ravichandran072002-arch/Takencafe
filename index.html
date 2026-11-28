@@ -719,7 +719,6 @@
       <div class="r-logo-badge">R</div>
       <div style="min-width:0;">
         <h1 id="headerCafeTitle">RAVI POS</h1>
-        <span id="headerSubInfo">Taken Cafe</span>
         <span id="loginGreeting" hidden></span>
       </div>
     </div>
@@ -741,7 +740,7 @@
     <div id="staffActivityList" class="shop-entry-list"></div>
     <div class="notification-actions">
       <button class="mini-btn" type="button" onclick="updateInboxRead(false)">Mark all read</button>
-      <button class="mini-btn" type="button" onclick="updateInboxRead(true)">Clear read</button>
+      <button class="mini-btn" type="button" id="clearInboxRead" onclick="updateInboxRead(true)">Clear read</button>
     </div>
   </dialog>
 
@@ -784,10 +783,12 @@
             <select id="payModeDesk" onchange="syncOrderFields('desk')">
               <option value="UPI">📱 UPI</option>
               <option value="Cash">💵 Cash</option>
+              <option value="Split">Split (Cash + UPI)</option>
               <option value="Card">💳 Card</option>
               <option value="Khata">📒 Khata (Credit)</option>
             </select>
           </div>
+          <label data-split-payment hidden>Cash in split<input id="splitCashDesk" type="number" min="0.01" step="0.01" inputmode="decimal" oninput="document.getElementById('splitCashMob').value=this.value" /></label>
           <div class="checkout-customer checkout-customer-desktop">
             <input type="text" id="custNameDesk" placeholder="Customer Name / Table No." oninput="syncOrderFields('desk')" style="margin-bottom:8px;" />
             <input id="customerPhoneDesk" type="tel" aria-label="Customer WhatsApp number" placeholder="WhatsApp number (+91)" maxlength="24" autocomplete="off" oninput="syncOrderFields('desk')" hidden />
@@ -819,8 +820,8 @@
           <div style="display:grid;grid-template-columns:0.8fr 1.2fr 1.2fr;gap:6px;margin-top:10px;">
             <button class="btn btn-outline" onclick="clearCart()">Clear</button>
             <button class="btn btn-green" onclick="checkoutBill(false)">💾 Save Bill</button>
-            <button class="btn btn-primary" onclick="checkoutBill(true)">🖨️ Save & Print</button>
-            <button class="btn btn-outline" data-whatsapp-checkout onclick="checkoutBill(true)" hidden>Save &amp; open PDF options</button>
+            <button class="btn btn-primary" data-receipt-print onclick="checkoutBill(true)">🖨️ Save & Print</button>
+            <button class="btn btn-outline" data-whatsapp-checkout data-receipt-print onclick="checkoutBill(true)" hidden>Save &amp; open PDF options</button>
           </div>
         </div>
       </div>
@@ -931,6 +932,7 @@
         <div class="kpi red"><small>Today's Expenses</small><strong id="kpiExp">₹0</strong><span id="kpiProfitSub">Net Profit: ₹0</span></div>
       </div>
 
+      <label class="card sales-filter">Sales by staff<select id="salesStaffFilter" onchange="billsLimit=60;renderSummary()"><option value="">All staff</option></select></label>
       <div class="card">
         <span class="card-title">📅 Date-Wise Filter & Excel Export (.xlsx)</span>
         <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">Downloads accurate Date-Wise Cash/UPI Sales, Expenses, Item Summary & Totals in Excel (.xlsx) and syncs to Google Sheet.</p>
@@ -984,6 +986,7 @@
         <h2 class="card-title">Add stock batch</h2>
         <form class="shop-entry-form" onsubmit="saveShopEntry(event, 'stock')">
           <label>Item<input name="note" maxlength="120" required></label>
+          <label>Deduct when sold<select id="stockMenuItem" name="menuItemId"><option value="">Unlinked stock</option></select></label>
           <label>Quantity<input name="amount" type="number" min="1" max="1000000" step="1" required></label>
           <label>Manufactured on<input name="manufactured" type="date" required></label>
           <label>Expires on<input name="expiry" type="date" required></label>
@@ -1097,7 +1100,7 @@
       <div class="card cloud-settings-card" id="billingPreferencesCard" data-settings-panel="billing" hidden>
         <h2>Billing Preferences</h2>
         <div class="cloud-settings-fields">
-          <label><input type="checkbox" id="enableWhatsAppPdf" onchange="setWhatsAppPdf(this.checked)" /> Enable WhatsApp PDF bills</label>
+          <label><input type="checkbox" id="enableWhatsAppPdf" disabled /> WhatsApp PDF bills (paused)</label>
           <p>Show an optional customer number at checkout and allow PDF sharing from saved bills.</p>
         </div>
       </div>
@@ -1190,7 +1193,6 @@
           </section>
           <section class="staff-management-panel" aria-labelledby="staff-accounts-title">
             <h3 id="staff-accounts-title">Manage existing users</h3>
-            <input id="staffAccountSearch" type="search" placeholder="Search login IDs" aria-label="Search login IDs" oninput="filterStaffAccounts()" />
             <section class="user-account-list" id="localAccounts">
               <ul id="loginUsersTable" class="user-list"></ul>
             </section>
@@ -1290,6 +1292,7 @@
         <div class="cloud-settings-fields">
           <label for="paperSizeSelect">Paper size</label>
           <div class="cloud-settings-actions">
+            <label><input type="checkbox" id="receiptPrinterEnabled" onchange="setReceiptPrinter(this.checked)" /> Enable receipt printer</label>
             <select id="paperSizeSelect" onchange="savePrinterPrefs()">
               <option value="80mm">80mm Thermal Paper</option>
               <option value="58mm">58mm Thermal Paper</option>
@@ -1326,6 +1329,12 @@
     <div class="live-chips" id="liveChipsRow">
       <span style="font-size:11px;color:#e7d8ce;">Tap items above — live bill updates right here</span>
     </div>
+    <div class="quick-pay" aria-label="Payment method">
+      <button type="button" onclick="selectBillPayment('Cash')">Cash</button>
+      <button type="button" onclick="selectBillPayment('UPI')">UPI</button>
+      <button type="button" onclick="selectBillPayment('Split')">Split</button>
+    </div>
+    <label data-split-payment hidden>Cash in split<input id="splitCashMob" type="number" min="0.01" step="0.01" inputmode="decimal" oninput="document.getElementById('splitCashDesk').value=this.value" /></label>
     <div class="live-bar-main">
       <div onclick="openBillDrawer()" style="cursor:pointer;min-width:0;">
         <div style="font-size:11px;color:#fde68a;" id="barItemCount">0 Items ▲</div>
@@ -1334,7 +1343,7 @@
       <div style="display:flex;gap:5px;flex-shrink:0;">
         <button class="btn btn-outline" style="width:auto;padding:8px 9px;font-size:12px;" onclick="openBillDrawer()">View</button>
         <button class="btn btn-green" style="width:auto;padding:8px 11px;font-size:12px;" onclick="checkoutBill(false)">💾 Save</button>
-        <button class="btn btn-primary" style="width:auto;padding:8px 10px;font-size:12px;" onclick="checkoutBill(true)">🖨️ Print</button>
+        <button class="btn btn-primary" style="width:auto;padding:8px 10px;font-size:12px;" data-receipt-print onclick="checkoutBill(true)">🖨️ Print</button>
       </div>
     </div>
   </div>
@@ -1354,6 +1363,7 @@
         <select id="payModeMob" onchange="syncOrderFields('mob')">
           <option value="UPI">📱 UPI</option>
           <option value="Cash">💵 Cash</option>
+              <option value="Split">Split (Cash + UPI)</option>
           <option value="Card">💳 Card</option>
           <option value="Khata">📒 Khata (Credit)</option>
         </select>
@@ -1473,8 +1483,8 @@
       </div>
       <div class="no-print" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-          <button class="btn btn-dark" style="padding:8px;font-size:11px;" onclick="triggerSystemPrint()">🖨️ System / USB Print</button>
-          <button class="btn btn-primary" style="padding:8px;font-size:11px;" onclick="printBluetoothThermal()">📶 BT Thermal Print</button>
+          <button class="btn btn-dark" style="padding:8px;font-size:11px;" data-receipt-print onclick="triggerSystemPrint()">🖨️ System / USB Print</button>
+          <button class="btn btn-primary" style="padding:8px;font-size:11px;" data-receipt-print onclick="printBluetoothThermal()">📶 BT Thermal Print</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
           <button class="btn btn-green" style="padding:8px;font-size:11px;" id="receiptPdfButton" onclick="shareWhatsAppPdf()" hidden>WhatsApp PDF</button>
@@ -1515,7 +1525,7 @@
           localStorage.setItem(key, JSON.stringify(val));
           return true;
         } catch (err) {
-          showToast("⚠️ Device storage full — export Excel & clear old bills!");
+          showToast("Device storage is full. Free some space and retry. The current bill is still open.");
           return false;
         }
       }
@@ -1688,7 +1698,9 @@
       "    if (!dayMap[k]) dayMap[k] = { date: k, count: 0, cash: 0, digital: 0, sales: 0, exp: 0 };",
       "    const amt = Number(b.total || 0);",
       "    dayMap[k].count += 1; dayMap[k].sales += amt;",
-      "    if (b.mode === \"Cash\") dayMap[k].cash += amt; else dayMap[k].digital += amt;",
+      "    const cash = b.mode === \"Cash\" ? amt : b.mode === \"Split\" ? Math.max(0, Math.min(amt, Number(b.cashPaid) || 0)) : 0;",
+      "    dayMap[k].cash += cash;",
+      "    dayMap[k].digital += amt - cash;",
       "  });",
       "  expenses.forEach(e => {",
       "    const k = e.date || \"Unknown\";",
@@ -1999,6 +2011,7 @@
       document.getElementById("billingPreferencesCard").hidden = !canConfigure;
       if (!canConfigure && document.getElementById("billingPreferencesNav").getAttribute("aria-pressed") === "true") showSettingsPanel("shop");
       updateWhatsAppBillingUI();
+      updatePrinterControls();
       for (const tab of ["summary", "menu", "settings"]) document.getElementById("nav-" + tab).hidden = cloudStaff;
       document.getElementById("cloudStaffLogout").hidden = !cloudStaff;
       document.getElementById("nav-my-bills").hidden = !cloudStaff;
@@ -2018,6 +2031,7 @@
         badgeText.innerHTML = `Logged in as <b>${acc.username}</b> • Role: <b>${acc.role}</b>`;
       }
       updateUserAccountForm();
+      document.querySelector("#ownerStaffEntries form").hidden = !primaryOwnerControls();
       document.getElementById("ownerStaffEntries").hidden = getLoggedAccount().role !== "Owner";
       document.getElementById("cashEntryCard").hidden = getLoggedAccount().role !== "Owner";
       document.getElementById("driveExportSetup").hidden = getLoggedAccount().role !== "Owner";
@@ -2164,6 +2178,9 @@
       if (!isLogged) sessionStorage.removeItem("tc_session_logged");
       const screen = document.getElementById("appLoginScreen");
       if (isLogged) {
+        const greeting = document.getElementById("loginGreeting");
+        greeting.hidden = false;
+        greeting.textContent = "Hi, " + account.username;
         screen.classList.add("hidden");
         applyRolePermissionsUI();
       } else {
@@ -2237,19 +2254,6 @@
       setTimeout(() => input.focus(), 80);
     }
 
-    function filterStaffAccounts() {
-      const search = document.getElementById("staffAccountSearch").value.trim().toLowerCase();
-      let matched = false;
-      for (const row of document.querySelectorAll("#userAccessControlCard [data-login-id]")) {
-        row.hidden = !row.dataset.loginId.includes(search);
-        if (!row.hidden && !row.closest(".user-account-list").hidden) matched = true;
-      }
-      for (const section of document.querySelectorAll("#userAccessControlCard .user-account-list")) {
-        section.classList.toggle("user-search-no-match", Boolean(search) && !section.querySelector("[data-login-id]:not([hidden])"));
-      }
-      document.getElementById("staffSearchEmpty").hidden = !search || matched;
-    }
-
     function createUserAccountRow(username, role, status, allowed) {
       const row = document.createElement("li");
       row.dataset.loginId = username.toLowerCase();
@@ -2289,7 +2293,6 @@
 
     function applySettingsToInputs() {
       const shopName = (settings.name || "TAKEN CAFE").trim();
-      document.getElementById("headerSubInfo").textContent = shopName;
       document.getElementById("setCafeName").value = configuredShopName(settings);
       document.getElementById("setPhone").value = settings.phone || "";
       document.getElementById("setAddress").value = settings.address || "";
@@ -2509,7 +2512,13 @@
       if (btn) btn.classList.add("active");
       if (tab === "staff") { renderAttendance(); renderShopEntries(); if (RaviCloud.ownerConnected()) loadEntryStaff(); }
       if (tab === "my-bills") { myBillLimit = 50; renderMyBills(); }
-      if (tab === "stock") renderShopEntries();
+      if (tab === "stock") {
+        const field = document.getElementById("stockMenuItem");
+        const selection = field.value;
+        field.replaceChildren(new Option("Unlinked stock", ""), ...menu.map(item => new Option(item.name, item.id)));
+        field.value = menu.some(item => String(item.id) === selection) ? selection : "";
+        renderShopEntries();
+      }
       if (tab === "summary") { renderSummary(); renderShopEntries(); }
       if (tab === "expenses") renderExpenses();
       if (tab === "menu") renderMenuManager();
@@ -2522,17 +2531,30 @@
     function selectCategory(catName) { activeCat = catName; renderCategories(); renderMenu(); }
 
     function renderCategories() {
-      const cats = ["All", ...new Set(menu.map(m => m.cat))];
+      const cats = ["All", "★ Favorites", ...new Set(menu.map(m => m.cat).filter(cat => cat !== "★ Favorites"))];
       if (!cats.includes(activeCat)) activeCat = "All";
       document.getElementById("categoryPills").innerHTML = cats.map(c => {
-        const count = c === "All" ? menu.length : menu.filter(m => m.cat === c).length;
+        const count = c === "All" ? menu.length : c === "★ Favorites" ? menu.filter(m => favoriteItems.has(m.id)).length : menu.filter(m => m.cat === c).length;
         return `<button class="pill ${c === activeCat ? "active" : ""}" onclick="selectCategory('${c.replace(/'/g, "\\'")}')">${c} (${count})</button>`;
       }).join("");
       const uniqueCats = [...new Set(menu.map(m => m.cat))];
       document.getElementById("catSuggestions").innerHTML = uniqueCats.map(c => `<option value="${c}">`).join("");
     }
 
+    const favoriteItems = new Set(safeStorageGet("tc_menu_favorites", []));
+
     function handleMenuGridClick(e) {
+      const favorite = e.target.closest("[data-favorite]");
+      if (favorite) {
+        const id = Number(favorite.dataset.favorite);
+        const next = new Set(favoriteItems);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        if (!safeStorageSet("tc_menu_favorites", [...next])) return;
+        if (next.has(id)) favoriteItems.add(id); else favoriteItems.delete(id);
+        renderCategories();
+        renderMenu();
+        return;
+      }
       const card = e.target.closest(".menu-item");
       if (!card) return;
       const id = Number(card.getAttribute("data-id"));
@@ -2542,10 +2564,10 @@
     function renderMenu() {
       const q = document.getElementById("searchMenu").value.toLowerCase();
       const cartMap = new Map(cart.map(c => [c.id, c.qty]));
-      const filtered = menu.filter(m => (activeCat === "All" || m.cat === activeCat) && m.name.toLowerCase().includes(q));
+      const filtered = menu.filter(m => (activeCat === "All" || (activeCat === "★ Favorites" ? favoriteItems.has(m.id) : m.cat === activeCat)) && m.name.toLowerCase().includes(q));
       document.getElementById("menuGrid").innerHTML = filtered.map(m => {
         const qty = cartMap.get(m.id);
-        return `<button type="button" class="menu-item ${qty ? 'in-cart' : ''}" data-id="${m.id}"><span class="cat">${m.cat}</span><span class="name">${m.name}</span><span class="menu-item-footer"><span class="price">₹${m.price}</span><span class="menu-add">Add +${qty ? ` (${qty})` : ""}</span></span></button>`;
+        return `<div class="menu-item-wrap"><button type="button" class="menu-item ${qty ? 'in-cart' : ''}" data-id="${m.id}"><span class="cat">${m.cat}</span><span class="name">${m.name}</span><span class="menu-item-footer"><span class="price">₹${m.price}</span><span class="menu-add">Add +${qty ? ` (${qty})` : ""}</span></span></button><button type="button" class="favorite-item" aria-label="Favorite item" aria-pressed="${favoriteItems.has(m.id)}" data-favorite="${m.id}">${favoriteItems.has(m.id) ? "★" : "☆"}</button></div>`;
       }).join("");
     }
 
@@ -2570,13 +2592,21 @@
       renderCart(); renderMenu();
     }
 
+    function selectBillPayment(mode) {
+      document.getElementById("payModeDesk").value = mode;
+      syncOrderFields("desk");
+
+    }
+
     function syncOrderFields(src) {
       const from = src === "desk" ? "Desk" : "Mob";
       const to = from === "Desk" ? "Mob" : "Desk";
       document.getElementById("customerPhone" + to).value = document.getElementById("customerPhone" + from).value;
       const other = src === "desk" ? "Mob" : "Desk", cur = src === "desk" ? "Desk" : "Mob";
       document.getElementById("orderType" + other).value = document.getElementById("orderType" + cur).value;
-      document.getElementById("payMode" + other).value = document.getElementById("payMode" + cur).value;
+      const mode = document.getElementById("payMode" + cur).value;
+      document.getElementById("payMode" + other).value = mode;
+      for (const field of document.querySelectorAll("[data-split-payment]")) field.hidden = mode !== "Split";
       document.getElementById("custName" + other).value = document.getElementById("custName" + cur).value;
     }
 
@@ -2637,14 +2667,11 @@
       return sessionStorage.getItem("tc_session_logged") === "1" && getLoggedAccount().role === "Owner";
     }
 
-    function whatsAppBillingEnabled() {
-      if (sessionStorage.getItem("tc_session_logged") !== "1") return false;
-      return isCloudStaff() ? typeof RaviCloud !== "undefined" && RaviCloud.staffWhatsAppEnabled() : settings.billingPreferences?.whatsAppPdf === true;
-    }
+    function whatsAppBillingEnabled() { return false; }
 
     function updateWhatsAppBillingUI() {
       const enabled = whatsAppBillingEnabled();
-      document.getElementById("enableWhatsAppPdf").checked = settings.billingPreferences?.whatsAppPdf === true;
+      document.getElementById("enableWhatsAppPdf").checked = false;
       for (const id of ["customerPhoneDesk", "customerPhoneMob"]) {
         const field = document.getElementById(id);
         field.hidden = !enabled;
@@ -2680,7 +2707,16 @@
       return /^\+[1-9]\d{7,14}$/.test(number) ? number : "";
     }
 
+    let isSaving = false;
+
     function checkoutBill(openPrintAfter) {
+      if (isSaving || sessionStorage.getItem("tc_session_logged") !== "1") return;
+      isSaving = true;
+      try { saveCurrentBill(openPrintAfter === true); }
+      finally { isSaving = false; }
+    }
+
+    function saveCurrentBill(openPrintAfter) {
       if (!cart.length) return showToast("Add items to bill first!");
       const rawPhone = whatsAppBillingEnabled() ? document.getElementById("customerPhoneDesk").value.trim() : "";
       const customerPhone = validWhatsAppPhone(rawPhone);
@@ -2691,26 +2727,39 @@
       }
       const { itemsSub, packing, discount, gst, grand } = getCartTotals();
       const now = Date.now(), currentShift = getCurrentActiveShift(), loggedAccount = sessionStorage.getItem("tc_logged_username") || "Staff";
+      const mode = document.getElementById("payModeDesk").value;
+      let cashPaid;
+      if (mode === "Split") {
+        const value = document.getElementById("splitCashDesk").value;
+        cashPaid = Math.round(Number(value) * 100) / 100;
+        if (!value || !(cashPaid > 0 && cashPaid < grand)) return showToast("Enter a cash amount smaller than the bill total.");
+      }
       const bill = {
-        uid: now + "-" + Math.floor(Math.random() * 10000), timestamp: now, billNo: getNextBillNo(),
+        uid: crypto.randomUUID(), timestamp: now, updatedAt: now, billNo: getNextBillNo(),
         date: getTodayDDMMYYYY(new Date(now)), time: getNowTimeIST(new Date(now)),
-        type: document.getElementById("orderTypeDesk").value, mode: document.getElementById("payModeDesk").value,
+        type: document.getElementById("orderTypeDesk").value, mode, ...(mode === "Split" ? { cashPaid } : {}),
         customer: document.getElementById("custNameDesk").value.trim().slice(0, 120) || "Walk-in",
         ...(customerPhone ? { customerPhone } : {}),
         staff: currentShift ? currentShift.name : loggedAccount, device: DEVICE_LABEL,
-        items: cart.map(c => ({ id: c.id, name: c.name, cat: c.cat, price: c.price, qty: c.qty })),
+        items: Object.freeze(cart.map(c => Object.freeze({ id: c.id, name: c.name, cat: c.cat, price: c.price, qty: c.qty }))),
         sub: itemsSub, packing, discount, gst, total: grand
       };
       RaviCloud.tagRecord(bill);
-      bills.unshift(bill);
-      if (!safeStorageSet("tc_bills", bills)) {
-        bills.shift();
-        return;
-      }
-      lastBill = bill; clearCart();
+      if (bills.some(existing => existing.uid === bill.uid)) return;
+      Object.freeze(bill);
+      const next = [{ ...bill, items: bill.items.map(item => ({ ...item })) }, ...bills];
+      // The persisted bill is also the sync outbox entry, so checkout needs only one durable write.
+      if (!safeStorageSet("tc_bills", next)) return;
+      bills = next;
+      document.getElementById("splitCashDesk").value = "";
+      document.getElementById("splitCashMob").value = "";
+      lastBill = next[0]; clearCart();
+      closeBillDrawer();
+      document.getElementById("syncStatusBadge").textContent = navigator.onLine ? "☁️ Queued" : "☁️ Offline · Queued";
+      renderStaffActivity();
       for (const id of ["custNameDesk", "custNameMob", "customerPhoneDesk", "customerPhoneMob"]) document.getElementById(id).value = "";
       triggerBackgroundSync();
-      if (openPrintAfter) openReceipt(bill); else showToast(`✅ Bill ${bill.billNo} (₹${bill.total}) Saved!`);
+      if (openPrintAfter && safeStorageGet("tc_receipt_printer", false) === true) openReceipt(bill); else showToast(`✅ Bill ${bill.billNo} (₹${bill.total}) Saved!`);
     }
 
     let myBillLimit = 50;
@@ -2821,7 +2870,19 @@
     }
 
     function savePrinterPrefs() { settings.paperSize = document.getElementById("paperSizeSelect").value; settings.updatedAt = Date.now(); safeStorageSet("tc_settings", settings); showToast("Paper size set to " + settings.paperSize); }
-    function triggerSystemPrint() { window.print(); }
+    function setReceiptPrinter(enabled) {
+      if (sessionStorage.getItem("tc_session_logged") !== "1" || !getLoggedAccount().isOwnerOrMgr) return;
+      safeStorageSet("tc_receipt_printer", enabled);
+      updatePrinterControls();
+    }
+
+    function updatePrinterControls() {
+      const enabled = safeStorageGet("tc_receipt_printer", false) === true;
+      document.getElementById("receiptPrinterEnabled").checked = enabled;
+      for (const control of document.querySelectorAll("[data-receipt-print]")) control.hidden = !enabled;
+    }
+
+    function triggerSystemPrint() { if (safeStorageGet("tc_receipt_printer", false) === true) window.print(); }
 
     async function connectBluetoothPrinter() {
       if (!navigator.bluetooth) return showToast("Use System/USB Print or pair printer in Device Bluetooth Settings");
@@ -2840,7 +2901,7 @@
     }
 
     async function printBluetoothThermal() {
-      if (!lastBill) return;
+      if (!lastBill || safeStorageGet("tc_receipt_printer", false) !== true) return;
       if (!btCharacteristic) { await connectBluetoothPrinter(); if (!btCharacteristic) return; }
       const w = settings.paperSize === "58mm" ? 32 : 48, line = "-".repeat(w) + "\n";
       const pad = (l, r) => l + " ".repeat(Math.max(1, w - l.length - r.length)) + r + "\n";
@@ -3012,6 +3073,11 @@
       return { fBills, fExpenses, fAttendance, fromVal, toVal };
     }
 
+    function billCashAmount(bill) {
+      const total = Number(bill.total || 0);
+      return bill.mode === "Cash" ? total : bill.mode === "Split" ? Math.max(0, Math.min(total, Number(bill.cashPaid) || 0)) : 0;
+    }
+
     function buildDayWiseMap(fBills, fExpenses, cashEntries = []) {
       const map = {};
       fBills.forEach(b => {
@@ -3019,7 +3085,8 @@
         if (!map[key]) map[key] = { date: key, iso: parseAnyDateToISO(key), count: 0, cash: 0, digital: 0, sales: 0, exp: 0, drawerAdded: 0 };
         const amt = Number(b.total || 0);
         map[key].count += 1; map[key].sales += amt;
-        if (b.mode === "Cash") map[key].cash += amt; else map[key].digital += amt;
+        map[key].cash += billCashAmount(b);
+        map[key].digital += amt - billCashAmount(b);
       });
       fExpenses.forEach(e => {
         const key = e.date || "Unknown";
@@ -3038,8 +3105,8 @@
       const todayBills = bills.filter(b => parseAnyDateToISO(b.date) === todayISO);
       const todayExp = expenses.filter(e => parseAnyDateToISO(e.date) === todayISO);
       const salesSum = todayBills.reduce((s, b) => s + Number(b.total || 0), 0);
-      const cashSum = todayBills.filter(b => b.mode === "Cash").reduce((s, b) => s + Number(b.total || 0), 0);
-      const upiCardSum = todayBills.filter(b => b.mode !== "Cash").reduce((s, b) => s + Number(b.total || 0), 0);
+      const cashSum = todayBills.reduce((sum, bill) => sum + billCashAmount(bill), 0);
+      const upiCardSum = salesSum - cashSum;
       const expSum = todayExp.reduce((s, e) => s + Number(e.amount || 0), 0);
       const drawerAdded = shopEntries.filter(row => row.kind === "cash" && parseAnyDateToISO(row.date) === todayISO)
         .reduce((sum, row) => sum + row.amount, 0);
@@ -3052,7 +3119,13 @@
       document.getElementById("kpiExp").textContent = "₹" + expSum;
       document.getElementById("kpiProfitSub").textContent = `Net Profit: ₹${salesSum - expSum}`;
 
-      const { fBills, fExpenses, fromVal, toVal } = getFilteredRecordsByDate();
+      const { fBills: datedBills, fExpenses, fromVal, toVal } = getFilteredRecordsByDate();
+      const staffFilter = document.getElementById("salesStaffFilter");
+      const selection = staffFilter.value;
+      const names = [...new Set(datedBills.map(bill => bill.staff).filter(Boolean))].sort();
+      staffFilter.replaceChildren(new Option("All staff", ""), ...names.map(name => new Option(name, name)));
+      if (names.includes(selection)) staffFilter.value = selection;
+      const fBills = staffFilter.value ? datedBills.filter(bill => bill.staff === staffFilter.value) : datedBills;
       const cashEntries = shopEntries.filter(row => {
         const date = parseAnyDateToISO(row.date);
         return row.kind === "cash" && (!fromVal || date >= fromVal) && (!toVal || date <= toVal);
@@ -3073,6 +3146,34 @@
         : `<tr><td colspan="6" style="text-align:center;color:var(--muted);">No saved bills found</td></tr>`;
       const loadBtn = document.getElementById("loadMoreBillsBtn");
       if (loadBtn) loadBtn.style.display = fBills.length > billsLimit ? "block" : "none";
+    }
+
+    function stockBalances(entries, bills) {
+      const items = new Map();
+      for (const row of entries) {
+        if (row.kind !== "stock" || !Number.isSafeInteger(row.menuItemId)) continue;
+        const balance = items.get(row.menuItemId) || { quantity: 0, batches: [], name: row.note };
+        balance.batches.push({ at: row.updatedAt, quantity: row.amount });
+        items.set(row.menuItemId, balance);
+      }
+      const movements = new Map();
+      for (const bill of bills) {
+        for (const item of bill.items || []) {
+          const id = Number(item.id);
+          if (!items.has(id)) continue;
+          if (!movements.has(id)) movements.set(id, []);
+          movements.get(id).push({ at: bill.timestamp, quantity: item.qty });
+        }
+      }
+      for (const [id, balance] of items) {
+        const events = balance.batches.map(batch => ({ ...batch, stock: true })).concat(movements.get(id) || []);
+        events.sort((a, b) => a.at - b.at || Number(Boolean(b.stock)) - Number(Boolean(a.stock)));
+        for (const event of events) {
+          balance.quantity = event.stock ? balance.quantity + event.quantity : Math.max(0, balance.quantity - event.quantity);
+        }
+        delete balance.batches;
+      }
+      return Object.fromEntries(items);
     }
 
     function mergeShopEntries(incoming) {
@@ -3118,6 +3219,7 @@
       if (sessionStorage.getItem("tc_session_logged") !== "1") return;
       const account = getLoggedAccount();
       if (kind !== "stock" && account.role !== "Owner") return;
+      if (kind === "advance" && !primaryOwnerControls()) return;
       const form = event.currentTarget;
       const data = new FormData(form);
       const note = String(data.get("note") || "").trim();
@@ -3138,7 +3240,7 @@
       const now = Date.now();
       const entries = recipients.map(id => ({
         uid: crypto.randomUUID(), kind, updatedAt: now, date: getTodayDDMMYYYY(new Date(now)),
-        by: account.username, note, recipient: id, amount, ...(kind === "stock" ? { manufactured, expiry } : {})
+        by: account.username, note, recipient: id, amount, ...(kind === "stock" ? { manufactured, expiry, ...(data.get("menuItemId") ? { menuItemId: Number(data.get("menuItemId")) } : {}) } : {})
       }));
       entries.forEach(entry => RaviCloud.tagRecord(entry));
       if (!safeStorageSet("tc_shop_entries", [...entries, ...shopEntries])) return;
@@ -3178,6 +3280,7 @@
         list.replaceChildren();
         return;
       }
+      document.getElementById("clearInboxRead").hidden = !primaryOwnerControls();
       const state = safeStorageGet(inboxStateKey(), {});
       const cleared = new Set(state.cleared || []);
       const rows = inboxRows().filter(row => !cleared.has(row.uid));
@@ -3218,6 +3321,66 @@
       return row.text || row.id + " " + activityLabels[row.kind];
     }
 
+    function messageQueueKey(action, endpoint, id) {
+      return "tc_message_" + action + ":" + endpoint + ":" + id;
+    }
+
+    function pendingMessageActions(action, endpoint, id) {
+      const queue = safeStorageGet(messageQueueKey(action, endpoint, id), []);
+      return queue.filter(row => row.date === getTodayDDMMYYYY()).map(row => row.uid);
+    }
+
+    function confirmMessageActions(action, endpoint, id, uids) {
+      const key = messageQueueKey(action, endpoint, id);
+      const done = new Set(uids);
+      safeStorageSet(key, safeStorageGet(key, []).filter(row => !done.has(row.uid) && row.date === getTodayDDMMYYYY()));
+    }
+
+    function changeMessageState(action, uid) {
+      const owner = primaryOwnerControls();
+      const row = shopEntries.find(entry => entry.uid === uid && entry.kind === "message" && entry.date === getTodayDDMMYYYY());
+      const id = getLoggedAccount().username;
+      if (!row || (action === "clear" ? !owner : !isCloudStaff() || row.recipient !== id)) return;
+      const endpoint = RaviCloud.staffShopLink();
+      const key = messageQueueKey(action, endpoint, id);
+      const today = getTodayDDMMYYYY();
+      const queue = safeStorageGet(key, []).filter(entry => entry.date === today && entry.uid !== uid);
+      if (!safeStorageSet(key, [...queue, { uid, date: today }])) return;
+      renderShopEntries();
+      triggerBackgroundSync();
+    }
+
+    function receiveStaffMessages(remote, id) {
+      if (!Array.isArray(remote)) return;
+      const next = shopEntries.filter(row => row.kind !== "message" || row.recipient !== id);
+      next.push(...remote.filter(row => row.kind === "message" && row.recipient === id));
+      if (safeStorageSet("tc_shop_entries", next)) shopEntries = next;
+      mergeShopEntries(remote.filter(row => row.kind !== "message"));
+    }
+
+    function primaryOwnerControls() {
+      return canConfigureBilling() && (typeof RaviCloud === "undefined" || !RaviCloud.isOnlineOwner() || RaviCloud.canAssignStaffPin());
+    }
+
+    function activeShopMessage(row, id) {
+      return row.kind === "message" && row.date === getTodayDDMMYYYY() && !row.clearedAt
+        && !pendingMessageActions("clear", (typeof RaviCloud === "undefined" ? settings.gdriveUrl : RaviCloud.staffShopLink()), id).includes(row.uid);
+    }
+
+    function currentStockBalances() {
+      if (!isCloudStaff() || typeof RaviCloud === "undefined") return stockBalances(shopEntries, bills);
+      const report = RaviCloud.staffStockBalances();
+      if (!report) return stockBalances(shopEntries, bills.filter(RaviCloud.ownsRecord));
+      const balances = Object.fromEntries(Object.entries(report).map(([id, row]) => [id, { ...row }]));
+      for (const bill of bills) {
+        if (!RaviCloud.ownsRecord(bill) || bill.cloud.uploadedAt === (bill.updatedAt || 0)) continue;
+        for (const item of bill.items) {
+          if (balances[item.id]) balances[item.id].quantity = Math.max(0, balances[item.id].quantity - item.qty);
+        }
+      }
+      return balances;
+    }
+
     function inboxRows() {
       const owner = canConfigureBilling();
       const id = getLoggedAccount().username;
@@ -3227,18 +3390,24 @@
       const tomorrow = new Date(Date.parse(today + "T00:00:00Z") + 86400000).toISOString().slice(0, 10);
       const rows = owner ? staffActivityRows() : [];
       for (const row of shopEntries) {
-        if (!owner && row.kind === "message" && row.recipient === id && row.updatedAt >= earliest) {
+        if (!owner && activeShopMessage(row, id) && row.recipient === id && !row.seenAt) {
           rows.push({ uid: row.uid, at: row.updatedAt, text: row.note });
         }
         if (row.kind !== "stock") continue;
         if (prefs.updates && row.updatedAt >= earliest) rows.push({ uid: row.uid + ":stock", at: row.updatedAt, text: "Stock updated · " + row.note });
         if (prefs.expiry && row.expiry === tomorrow) rows.push({ uid: row.uid + ":expiry:" + tomorrow, at: Date.parse(today + "T00:00:00+05:30"), text: "Expires tomorrow · " + row.note });
       }
+      if (prefs.updates) {
+        for (const [itemId, row] of Object.entries(currentStockBalances())) {
+          if (row.quantity <= 5) rows.push({ uid: "low:" + itemId + ":" + today + ":" + row.quantity,
+            at: Date.parse(today + "T00:00:00+05:30"), text: "Low stock · " + row.name + " (" + row.quantity + ")" });
+        }
+      }
       return rows.sort((a, b) => b.at - a.at).slice(0, 50);
     }
 
     function updateInboxRead(clear) {
-      if (sessionStorage.getItem("tc_session_logged") !== "1") return;
+      if (sessionStorage.getItem("tc_session_logged") !== "1" || (clear && !primaryOwnerControls())) return;
       const key = inboxStateKey();
       const state = safeStorageGet(key, {});
       const read = new Set(state.read || []);
@@ -3299,10 +3468,32 @@
       alert.hidden = !owner || !stockAlertPreferences().expiry || !expiring.length;
       alert.textContent = expiring.length + " expiring tomorrow";
       const stockLabel = row => row.expiry === tomorrow ? " · Expires tomorrow" : row.expiry < today ? " · Expired" : "";
-      render("stockEntryList", stock.map(row => `${row.note} · Qty ${row.amount} · Made ${row.manufactured} · Expires ${row.expiry}${stockLabel(row)}`));
+      const balances = Object.values(currentStockBalances()).map(row => row.name + " · " + row.quantity + " remaining");
+      render("stockEntryList", [...balances, ...stock.map(row => `${row.note} · Batch qty ${row.amount} · Made ${row.manufactured} · Expires ${row.expiry}${stockLabel(row)}`)]);
       document.getElementById("staffEntryTitle").textContent = staff ? "Messages" : "Staff activity";
-      render("staffEntryList", rows.filter(row => (owner && row.kind === "advance") || ((owner || staff) && row.kind === "message")).map(row =>
-        row.kind === "advance" ? `${row.date} · ${row.recipient} · ₹${row.amount} advance` : `${row.date} · ${row.by} → ${row.recipient} · ${row.note}`));
+      const entries = document.getElementById("staffEntryList");
+      entries.replaceChildren();
+      for (const row of rows.filter(row => (primaryOwnerControls() && row.kind === "advance")
+        || ((owner || staff) && activeShopMessage(row, id))).slice(0, 30)) {
+        const line = document.createElement("p");
+        line.textContent = row.kind === "advance" ? row.date + " · " + row.recipient + " · ₹" + row.amount + " advance"
+          : (owner ? row.recipient + " · " : "") + row.note;
+        if (row.kind === "message") {
+          const queued = staff && pendingMessageActions("seen", RaviCloud.staffShopLink(), id).includes(row.uid);
+          const action = document.createElement("button");
+          action.type = "button";
+          action.className = "mini-btn";
+          if (row.seenAt) line.append(" · Seen " + getNowTimeIST(new Date(row.seenAt)));
+          if (queued) line.append(" · Seen (queued)");
+          if (primaryOwnerControls() || (staff && !row.seenAt && !queued)) {
+            action.textContent = owner ? "Clear" : "✓ Seen";
+            action.onclick = () => changeMessageState(owner ? "clear" : "seen", row.uid);
+            line.append(" ", action);
+          }
+        }
+        entries.append(line);
+      }
+      if (!entries.childElementCount) entries.textContent = "No entries yet.";
       render("cashEntryList", owner ? rows.filter(row => row.kind === "cash").map(row => `${row.date} · ₹${row.amount} · ${row.note}`) : []);
     }
 
@@ -3637,9 +3828,12 @@
         };
         const endpoint = settings.gdriveUrl;
         const { delta, next } = ownerRecordDelta(endpoint, payload);
-        const saved = await RaviCloud.owner(endpoint, "backup.write", { data: delta });
+        const loginId = getLoggedAccount().username;
+        const clearMessages = pendingMessageActions("clear", endpoint, loginId);
+        const saved = await RaviCloud.owner(endpoint, "backup.write", { data: { ...delta, clearMessages } });
         if (!stillConnected()) return;
         ownerRecordBaselines.set(endpoint, next);
+        if (saved.messageLifecycle) confirmMessageActions("clear", endpoint, loginId, clearMessages);
         if (Array.isArray(saved.staffActivity)) {
           safeStorageSet("tc_staff_activity", { endpoint: settings.gdriveUrl, events: saved.staffActivity });
         }
@@ -3705,6 +3899,12 @@
         remote.attendance.forEach(ra => { const localAtt = attMap.get(ra.uid); if (!localAtt || (ra.updatedAt || 0) > (localAtt.updatedAt || 0)) attMap.set(ra.uid, ra); });
         attendance = Array.from(attMap.values()).sort((a, b) => (b.inTimestamp || 0) - (a.inTimestamp || 0)); safeStorageSet("tc_attendance", attendance);
       }
+      if (Array.isArray(remote.shopEntries)) {
+        const updates = new Map(remote.shopEntries.filter(row => row.kind === "message").map(row => [row.uid, row]));
+        const next = shopEntries.filter(row => row.kind !== "message" || row.date === getTodayDDMMYYYY())
+          .map(row => updates.get(row.uid) || row);
+        if (safeStorageSet("tc_shop_entries", next)) shopEntries = next;
+      }
       mergeShopEntries(remote.shopEntries);
       receiveStockAlerts(remote.stockAlerts);
       if (remote.exportSettings) {
@@ -3761,6 +3961,13 @@
 
     setInterval(() => { if (sessionStorage.getItem("tc_session_logged") === "1" && navigator.onLine && !document.hidden) triggerBackgroundSync(); }, 25000);
     document.addEventListener("visibilitychange", () => { if (sessionStorage.getItem("tc_session_logged") === "1" && !document.hidden && navigator.onLine) triggerBackgroundSync(); });
+
+    document.addEventListener("keydown", event => {
+      if (event.repeat || !event.altKey || event.ctrlKey || event.metaKey || activeTabName !== "pos"
+        || sessionStorage.getItem("tc_session_logged") !== "1" || event.target.closest("input, textarea, select, [contenteditable]")) return;
+      if (event.key.toLowerCase() === "s") { event.preventDefault(); document.getElementById("searchMenu").focus(); }
+      if (event.key === "Enter") { event.preventDefault(); checkoutBill(false); }
+    });
 
     // Use the uploaded RAVI visual identity instead of runtime-generated icons.
     document.getElementById("appsScriptDisplay").textContent = APPS_SCRIPT_TEMPLATE;

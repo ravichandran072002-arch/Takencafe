@@ -87,15 +87,16 @@ const RaviCloud = (() => {
     "    };",
     "    if (kind === \"stock\") {",
     "      if (row.kind !== \"stock\" || !raviValidStockDates(row) || !Number.isSafeInteger(row.amount) || row.amount < 1 || row.amount > 1000000 || !text(row.note).trim()) throw Error(\"Invalid stock batch\");",
-    "      return { ...base, kind: \"stock\", by: id, note: text(row.note), amount: row.amount, manufactured: row.manufactured, expiry: row.expiry };",
+    "      return { ...base, kind: \"stock\", ...(Number.isSafeInteger(row.menuItemId) ? { menuItemId: row.menuItemId } : {}), by: id, note: text(row.note), amount: row.amount, manufactured: row.manufactured, expiry: row.expiry };",
     "    }",
     "    if (kind === \"attendance\") return {",
     "      ...base, name: id, userId: id, role: \"Staff\", loginPunch: row.loginPunch === true, inTimestamp: date(row.inTimestamp), outTimestamp: date(row.outTimestamp),",
     "      inTime: text(row.inTime, 20), outTime: text(row.outTime, 20), duration: text(row.duration, 32)",
     "    };",
+    "    const cashPaid = row.mode === \"Split\" && row.cashPaid !== undefined ? number(row.cashPaid, row.total) : undefined;",
     "    if (!Array.isArray(row.items) || !row.items.length || row.items.length > 200) throw Error(\"Invalid bill items\");",
     "    return {",
-    "      ...base, timestamp: date(row.timestamp), time: text(row.time, 24), billNo: text(row.billNo, 48), staff: id,",
+    "      ...base, ...(cashPaid === undefined ? {} : { cashPaid }), timestamp: date(row.timestamp), time: text(row.time, 24), billNo: text(row.billNo, 48), staff: id,",
     "      type: text(row.type, 32), mode: text(row.mode, 32), customer: text(row.customer),",
     "      ...(typeof row.customerPhone === \"string\" && /^\\+[1-9]\\d{7,14}$/.test(row.customerPhone) ? { customerPhone: row.customerPhone } : {}),",
     "      items: row.items.map(item => ({ id: text(item.id, 48), name: text(item.name), cat: text(item.cat), price: number(item.price), qty: number(item.qty, 100000) })),",
@@ -124,16 +125,65 @@ const RaviCloud = (() => {
     "  return true;",
     "}",
     "",
+    "function stockBalances(entries, bills) {",
+    "  const items = new Map();",
+    "  for (const row of entries) {",
+    "    if (row.kind !== \"stock\" || !Number.isSafeInteger(row.menuItemId)) continue;",
+    "    const balance = items.get(row.menuItemId) || { quantity: 0, batches: [], name: row.note };",
+    "    balance.batches.push({ at: row.updatedAt, quantity: row.amount });",
+    "    items.set(row.menuItemId, balance);",
+    "  }",
+    "  const movements = new Map();",
+    "  for (const bill of bills) {",
+    "    for (const item of bill.items || []) {",
+    "      const id = Number(item.id);",
+    "      if (!items.has(id)) continue;",
+    "      if (!movements.has(id)) movements.set(id, []);",
+    "      movements.get(id).push({ at: bill.timestamp, quantity: item.qty });",
+    "    }",
+    "  }",
+    "  for (const [id, balance] of items) {",
+    "    const events = balance.batches.map(batch => ({ ...batch, stock: true })).concat(movements.get(id) || []);",
+    "    events.sort((a, b) => a.at - b.at || Number(Boolean(b.stock)) - Number(Boolean(a.stock)));",
+    "    for (const event of events) {",
+    "      balance.quantity = event.stock ? balance.quantity + event.quantity : Math.max(0, balance.quantity - event.quantity);",
+    "    }",
+    "    delete balance.batches;",
+    "  }",
+    "  return Object.fromEntries(items);",
+    "}",
+    "",
+    "function raviOwnerData(data, role) {",
+    "  if (role === \"primary\" || !data.shopEntries) return data;",
+    "  return { ...data, shopEntries: data.shopEntries.filter(row => row.kind !== \"advance\") };",
+    "}",
+    "",
+    "function raviMessageToday(row, today) {",
+    "  return row.kind === \"message\" && row.date === today && !row.clearedAt;",
+    "}",
+    "",
+    "function raviMessageDay() {",
+    "  return Utilities.formatDate(new Date(), \"Asia/Kolkata\", \"dd/MM/yyyy\");",
+    "}",
+    "",
     "function raviStaffSync(req) {",
     "  const bills = raviStaffRows(req.bills, req.id, \"bills\");",
     "  const attendance = raviStaffRows(req.attendance, req.id, \"attendance\");",
     "  const expenses = raviStaffRows(req.expenses === undefined ? [] : req.expenses, req.id, \"expenses\");",
     "  const stock = raviStaffRows(req.stock === undefined ? [] : req.stock, req.id, \"stock\");",
     "  let current = readBackup();",
-    "  if (bills.length || attendance.length || expenses.length || stock.length) {",
+    "  const today = raviMessageDay();",
+    "  const receipts = new Set(Array.isArray(req.messageSeen) ? req.messageSeen.slice(0, 50) : []);",
+    "  const acknowledged = (current.shopEntries || []).filter(row => receipts.has(row.uid) && row.recipient === req.id",
+    "    && raviMessageToday(row, today) && !row.seenAt).map(row => ({ ...row, seenAt: Date.now() }));",
+    "  if (bills.length || attendance.length || expenses.length || stock.length || acknowledged.length) {",
     "    const changes = { bills: bills.length > 0, attendance: attendance.length > 0, expenses: expenses.length > 0, stock: stock.length > 0 };",
     "    const incoming = { bills, attendance, expenses, shopEntries: stock };",
     "    const merged = raviMergeBackup(current, incoming);",
+    "    if (acknowledged.length) {",
+    "      const receiptsById = new Map(acknowledged.map(row => [row.uid, row]));",
+    "      merged.shopEntries = (merged.shopEntries || []).map(row => receiptsById.get(row.uid) || row);",
+    "    }",
     "    if (JSON.stringify(merged) !== JSON.stringify(current) || PropertiesService.getScriptProperties().getProperty(\"RAVI_SHEET_DIRTY\")) {",
     "      writeBackup(merged, false, current.empty ? undefined : changes);",
     "    }",
@@ -143,8 +193,8 @@ const RaviCloud = (() => {
     "  const shop = current.settings;",
     "  const receiptShop = shop ? { name: shop.name, ...(whatsAppPdf ? { address: shop.address, phone: shop.phone, gstin: shop.gstin, upi: shop.upi } : {}) } : undefined;",
     "  const shopEntries = (current.shopEntries || []).filter(row => row.kind === \"stock\"",
-    "    || (row.kind === \"message\" && row.recipient === req.id));",
-    "  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, stockAlerts: current.stockAlerts, shopEntries, shopOperations: true });",
+    "    || (raviMessageToday(row, today) && row.recipient === req.id));",
+    "  return raviReply({ ok: true, menu: current.menu, whatsAppPdf, receiptShop, shopAppearance: current.shopAppearance, stockAlerts: current.stockAlerts, shopEntries, stockBalances: stockBalances(current.shopEntries || [], current.bills || []), messageLifecycle: true, shopOperations: true });",
     "}",
     "",
     "function raviActiveMemberCount(props) {",
@@ -323,7 +373,7 @@ const RaviCloud = (() => {
     "        writeBackup(current, false);",
     "        return raviReply({ ok: true, folderName: folder.getName(), folderId: folder.getId() });",
     "      }",
-    "      if (req.action === \"backup.read\") return raviReply({ ok: true, data: readBackup() });",
+    "      if (req.action === \"backup.read\") return raviReply({ ok: true, data: raviOwnerData(readBackup(), role) });",
     "      if (req.action === \"staff.list\") {",
     "        const ids = props.getKeys().filter(key => key.startsWith(\"staff:\")).map(key => key.slice(6)).sort();",
     "        const roles = Object.fromEntries(ids.map(id => [id, raviRole(props, id)]));",
@@ -336,6 +386,8 @@ const RaviCloud = (() => {
     "      }",
     "      if (req.action === \"backup.write\" && req.data && typeof req.data === \"object\" && !Array.isArray(req.data)) {",
     "        const data = req.data;",
+    "        const clearedMessages = new Set(role === \"primary\" && Array.isArray(data.clearMessages) ? data.clearMessages.slice(0, 100) : []);",
+    "        delete data.clearMessages;",
     "        delete data.authUsers;",
     "        delete data.deletedUserIds;",
     "        delete data.exportSettings;",
@@ -366,18 +418,27 @@ const RaviCloud = (() => {
     "            && /^[a-f0-9-]{36}$/.test(row.uid) && typeof row.date === \"string\" && row.date.length <= 16",
     "            && Number.isSafeInteger(row.updatedAt) && row.updatedAt > 0 && typeof row.by === \"string\" && row.by.length <= 120",
     "            && typeof row.note === \"string\" && row.note.length <= 300",
+    "            && (row.kind !== \"advance\" || role === \"primary\")",
     "            && (row.kind === \"message\" ? Boolean(row.note.trim()) : Number.isFinite(row.amount) && row.amount > 0 && row.amount <= 100000000)",
     "            && (row.kind === \"stock\" ? raviValidStockDates(row) && Number.isSafeInteger(row.amount) && row.amount <= 1000000 && Boolean(row.note.trim())",
     "              : row.kind === \"cash\" ? Boolean(row.note.trim())",
     "              : [\"message\", \"advance\"].includes(row.kind) && /^[a-z0-9][a-z0-9._-]{2,31}$/.test(row.recipient || \"\")",
     "                && props.getProperty(\"staff:\" + row.recipient) && raviRole(props, row.recipient) === \"staff\" && !props.getProperty(\"revoked:\" + row.recipient)));",
+    "          data.shopEntries = data.shopEntries.map(row => {",
+    "            const { seenAt, clearedAt, ...entry } = row;",
+    "            return entry;",
+    "          });",
     "        } else delete data.shopEntries;",
     "        const merged = raviMergeBackup(current, data);",
+    "        const today = raviMessageDay();",
+    "        if (merged.shopEntries) merged.shopEntries = merged.shopEntries",
+    "          .filter(row => row.kind !== \"message\" || row.date === today)",
+    "          .map(row => raviMessageToday(row, today) && clearedMessages.has(row.uid) ? { ...row, clearedAt: Date.now() } : row);",
     "        const fields = new Set([...Object.keys(current), ...Object.keys(merged)]);",
     "        fields.delete(\"syncedAt\");",
     "        const changed = [...fields].some(field => JSON.stringify(current[field]) !== JSON.stringify(merged[field]));",
     "        if (changed || props.getProperty(\"RAVI_SHEET_DIRTY\")) writeBackup(merged, true);",
-    "        return raviReply({ ok: true, data: merged, staffActivity: JSON.parse(props.getProperty(\"RAVI_STAFF_ACTIVITY\") || \"[]\") });",
+    "        return raviReply({ ok: true, data: raviOwnerData(merged, role), messageLifecycle: true, staffActivity: JSON.parse(props.getProperty(\"RAVI_STAFF_ACTIVITY\") || \"[]\") });",
     "      }",
     "",
     "      const target = accountLogin ? req.target : req.id;",
@@ -652,8 +713,6 @@ const RaviCloud = (() => {
       byId("cloudStaffPassword").value = "";
       byId("cloudStaffPassword").hidden = true;
       byId("cloudStaffList").replaceChildren();
-      byId("staffAccountSearch").value = "";
-      filterStaffAccounts();
       byId("assignedStaffPin").value = "";
       byId("cloudStaffResult").textContent = "";
     }
@@ -775,23 +834,27 @@ const RaviCloud = (() => {
       if (isOnlineOwner() && !billBatch.length && !attendanceBatch.length && !expenseBatch.length && !stockBatch.length) return;
       const snapshots = [...billBatch, ...attendanceBatch].map(row => [row, row.updatedAt || 0]);
       const outgoing = records => records.map(({ cloud, ...row }) => row);
+      const messageSeen = pendingMessageActions("seen", connection.endpoint, connection.id);
       const remote = await request(connection.endpoint, "staff.sync", {
-        id: connection.id, ...connection.credentials, bills: outgoing(billBatch), attendance: outgoing(attendanceBatch), expenses: outgoing(expenseBatch), stock: outgoing(stockBatch)
+        id: connection.id, ...connection.credentials, bills: outgoing(billBatch), attendance: outgoing(attendanceBatch), expenses: outgoing(expenseBatch), stock: outgoing(stockBatch), messageSeen
       });
       if (staffConnection !== connection) return;
+      for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
       if (!isOnlineOwner()) {
+        connection.stockBalances = remote.stockBalances;
         connection.whatsAppPdf = remote.whatsAppPdf === true;
         connection.receiptShop = remote.receiptShop;
         receiveShopAppearance(remote.shopAppearance, connection.endpoint);
-        mergeShopEntries(remote.shopEntries);
+        if (remote.messageLifecycle) {
+          receiveStaffMessages(remote.shopEntries, connection.id);
+          confirmMessageActions("seen", connection.endpoint, connection.id, messageSeen);
+        } else mergeShopEntries(remote.shopEntries);
         receiveStockAlerts(remote.stockAlerts);
         await notifyStaffMessages(connection, remote.shopEntries).catch(() => {});
         if (staffConnection !== connection) return;
         renderShopEntries();
-        if (remote.receiptShop?.name) byId("headerSubInfo").textContent = remote.receiptShop.name;
         updateWhatsAppBillingUI();
       }
-      for (const [record, revision] of snapshots) record.cloud.uploadedAt = revision;
       if (remote.shopOperations) {
         for (const record of [...expenseBatch, ...stockBatch]) record.cloud.uploadedAt = record.updatedAt || 0;
         if (expenseBatch.length) safeStorageSet("tc_expenses", expenses);
@@ -959,7 +1022,7 @@ const RaviCloud = (() => {
       byId("cloudOwnershipNote").hidden = !canManageOwners || !ids.length;
       for (const id of ids.filter(id => staffId.test(id))) {
         const role = roles?.[id] || "staff";
-        const roleLabel = { primary: "Primary owner", "co-owner": "Co-owner", staff: "Staff" }[role];
+        const roleLabel = { primary: "Primary owner", "co-owner": "Manager / Co-owner", staff: "Staff" }[role];
         const blocked = revokedIds?.includes(id);
         const { row, details, actions } = createUserAccountRow(id, roleLabel, blocked ? "Sign-in blocked" : "Sign-in allowed", !blocked);
         row.classList.add("online-account-row");
@@ -1045,7 +1108,7 @@ const RaviCloud = (() => {
         }
         if (role === "staff") addAction("Online sign-in", "Revoke", "staff.revoke", id + " revoked. Their next sign-in will be denied.");
         if (canManageOwners && role !== "primary") {
-          if (role === "staff") addAction("Account role", "Make Co-owner", "owner.promote", id + " is now a co-owner. Use their online password for Owner access, or reset it here.");
+          if (role === "staff") addAction("Account role", "Grant Manager / Co-owner access", "owner.promote", id + " is now a co-owner. Use their online password for Owner access, or reset it here.");
           else addAction("Account role", "Remove Co-owner access", "owner.demote", id + " is now Staff.");
           addAction("Account role", "Transfer ownership to " + id, "owner.transfer", "Ownership transferred to " + id + ". Your online owner session has ended.");
         }
@@ -1070,7 +1133,6 @@ const RaviCloud = (() => {
         }
         list.append(row);
       }
-      filterStaffAccounts();
     }
 
     run(byId("generateCloudKeys"), () => {
@@ -1244,5 +1306,5 @@ const RaviCloud = (() => {
     refreshOwnerPanel();
   }
 
-  return { init, owner, staff, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, canAssignStaffPin: () => ownerConnection?.role === "primary", staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected, ownerSyncSession };
+  return { init, owner, staff, staffStockBalances: () => staffConnection?.stockBalances, staffWhatsAppEnabled: () => staffConnection?.whatsAppPdf === true, staffReceiptShop: () => staffConnection?.receiptShop, canAssignStaffPin: () => ownerConnection?.role === "primary", staffShopLink, enrollPin, refreshOwnerPanel, startStaffSession, startOnlineOwner, isOnlineOwner, staffActive, ownsRecord, tagRecord, syncStaff, ownerConnected, ownerSyncSession };
 })();
