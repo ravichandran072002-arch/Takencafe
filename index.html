@@ -1290,9 +1290,13 @@
       <div class="card cloud-settings-card" data-settings-panel="printer">
         <h2>Receipt printer</h2>
         <div class="cloud-settings-fields">
+          <label class="receipt-printer-switch">
+            <span>Enable receipt printer</span>
+            <input type="checkbox" role="switch" id="receiptPrinterEnabled" onchange="setReceiptPrinter(this.checked)" />
+            <span class="receipt-printer-track" aria-hidden="true"></span>
+          </label>
           <label for="paperSizeSelect">Paper size</label>
           <div class="cloud-settings-actions">
-            <label><input type="checkbox" id="receiptPrinterEnabled" onchange="setReceiptPrinter(this.checked)" /> Enable receipt printer</label>
             <select id="paperSizeSelect" onchange="savePrinterPrefs()">
               <option value="80mm">80mm Thermal Paper</option>
               <option value="58mm">58mm Thermal Paper</option>

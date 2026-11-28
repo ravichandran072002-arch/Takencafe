@@ -401,3 +401,50 @@ body:not(:has(#tab-pos.active)) .live-bill-bar { display: none; }
 .favorite-item { position: absolute; inset-inline-end: 4px; top: 4px; width: 36px; height: 36px; border: 0; border-radius: 8px; color: var(--text); background: var(--card); font-size: 20px; }
 .favorite-item[aria-pressed="true"] { color: var(--amber); }
 .menu-item-wrap .name { padding-inline-end: 27px; }
+
+.receipt-printer-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.receipt-printer-switch input {
+  position: absolute;
+  inset-inline-end: 0;
+  width: 48px;
+  height: 30px;
+  opacity: 0;
+}
+
+.receipt-printer-track {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 48px;
+  height: 28px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.receipt-printer-track::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+}
+
+.receipt-printer-switch input:checked + .receipt-printer-track {
+  justify-content: flex-end;
+  background: var(--green);
+}
+
+.receipt-printer-switch input:focus-visible + .receipt-printer-track {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
