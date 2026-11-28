@@ -17,7 +17,6 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException;
 
 @CapacitorPlugin(name = "RaviGoogleCredentials")
 public class RaviGoogleCredentials extends Plugin {
@@ -54,7 +53,7 @@ public class RaviGoogleCredentials extends Plugin {
                             JSObject result = new JSObject();
                             result.put("idToken", token.getIdToken());
                             call.resolve(result);
-                        } catch (GoogleIdTokenParsingException error) {
+                        } catch (Exception error) {
                             call.reject("Could not read the Google sign-in credential.");
                         }
                     }
